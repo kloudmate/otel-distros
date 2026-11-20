@@ -1,29 +1,22 @@
-# KloudMate PHP 8 distro
+# PHP
 
-A **composer meta-package**, `kloudmate/opentelemetry-php`, on top of the official `opentelemetry` extension.
-Scope is PHP 8.2–8.5 where a native build is bundled, since the official extension observes internal functions from 8.2.
-Everything else (7.0–8.1, ZTS, musl, 8.6) uses KloudMate's own
-tracer instead ([kloudmate/kloudmate-php](https://github.com/kloudmate/kloudmate-php), plan decision 2).
+PHP applications are instrumented through the KloudMate Agent, not through a package from this repository.
 
-**Upstream base:** `opentelemetry` ext **1.2.1** and the SDK/contrib set in `scripts/php-otel-bundle/composer.lock`
-(`sdk 1.14.0`, `opentelemetry-auto-pdo 0.4.0`, `auto-psr15 1.2.0`, `auto-psr18 1.2.0`, `sem-conv 1.38.0`). The
-package is scoped (php-scoper) as the bundle is today, so it can't collide with the app's own composer tree.
+| | |
+| --- | --- |
+| Runtime | PHP 7.0 – 8.6, NTS and ZTS |
+| Platforms | Linux x86-64, arm64 (glibc and musl) |
+| SAPIs | PHP-FPM, Apache `mod_php` |
+| Output | OTLP with current OpenTelemetry semantic conventions, `km.service_id` and `telemetry.distro.*` on the resource |
 
-## What it adds over upstream
+The agent picks one of two engines per PHP build:
 
-| Area | Upstream | KloudMate distro |
-| --- | --- | --- |
-| Packages | pick-your-own contrib set | one `require` that pins the tested set (PDO, PSR-15/18, curl, Laravel, Symfony, Redis) |
-| Resource | env | `km.service_id`, `telemetry.distro.*` |
-| Config | env; declarative config through `OTEL_EXPERIMENTAL_CONFIG_FILE` | generated file plus `distribution.kloudmate` |
-| Export | OTLP http to `:4318` | prefers km-agent's OTLP Unix socket when present |
-| Span contract | contrib names | unchanged; it's the reference the 7.x tracer copies |
+- **PHP 8.2–8.5, NTS, glibc:** the official OpenTelemetry PHP extension and SDK, where a matching build is
+  bundled.
+- **Every other build** (7.x, 8.0, 8.1, ZTS, musl, 8.6): KloudMate's own native tracer, which produces the same
+  spans and attributes.
 
-## Layout (planned)
-
-```
-php/
-  composer.json
-  src/{Bootstrap,ResourceDetector,Discovery}.php
-  km-manifest.json
-```
+Both are configured with the standard variables: `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`,
+`OTEL_SDK_DISABLED` and `OTEL_PHP_DISABLED_INSTRUMENTATIONS`. PHP-FPM workers are short-lived, so remote
+settings (enabled, sampling) reach them through a small settings file that the agent writes. Every worker
+re-reads it within a second of a change, without a reload.

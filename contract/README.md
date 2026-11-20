@@ -1,104 +1,86 @@
-# The KloudMate distro contract
+# Distribution specification
 
-What every distro implements, and what km-agent guarantees in return. Sources: plan §3 and Phases 2–3,
-research 03 §8.2 and research 04 (Elastic's OpAMP central config).
+What every KloudMate distribution implements, whatever the language. Language READMEs list where a runtime
+differs.
 
-## 1. Generated declarative config
+## 1. Configuration file
 
-km-agent renders one file per service, `/etc/kmagent/sdk/<service>-<sha8>.yaml`, in OpenTelemetry declarative
-config format (`file_format: "1.2"`; `"1.1"` for runtimes that don't read 1.2 yet). The activation sets only the
-entry hook plus `OTEL_CONFIG_FILE` and `KM_SERVICE_ID`. Node, and services that already run their own OTel
-agent, stay on env.
-
-KloudMate-only settings live under `distribution.kloudmate`:
+When `OTEL_CONFIG_FILE` points at an OpenTelemetry declarative configuration file, the distribution uses it as
+the source of truth, through the upstream SDK's own loader. KloudMate-specific settings live under
+`distribution.kloudmate`:
 
 ```yaml
 distribution:
   kloudmate:
-    service_id: "systemd:checkout.service"       # == km.service_id
+    service_id: "systemd:checkout.service"       # becomes km.service_id
     agent:
-      otlp_socket: /var/run/kmagent/otlp.sock     # preferred when present
-      otlp_endpoint: http://127.0.0.1:4318        # fallback
-    opamp:
-      endpoint: http://127.0.0.1:4320/v1/opamp
-      polling_interval: 30s
+      otlp_socket: /var/run/kmagent/otlp.sock     # used first, where the language's exporter supports Unix sockets
+      otlp_endpoint: http://127.0.0.1:4318        # otherwise
     runtime_metrics: { profile: standard }        # standard | extended | off
-    profiler: { enabled: false }
     status_dir: /run/kmagent/sdk-status
 ```
 
-Distros must ignore unknown keys under `distribution.kloudmate` (forward compatibility).
+Rules:
+
+- Unknown keys under `distribution.kloudmate` are ignored, so newer files work with older distributions.
+- The distribution only **fills** what the file leaves unset: an OTLP exporter without an `endpoint` gets the
+  agent endpoint; a resource without `km.service_id` gets it. A value the file sets is never replaced.
+- A file that can't be loaded never stops the application. The application runs uninstrumented and the status
+  file reports `error` / `config_parse_error`.
+
+Without a config file, the distribution reads the standard `OTEL_*` environment variables and applies its
+defaults underneath them.
 
 ## 2. `km.service_id`
 
-- The stable id km-agent's discovery assigns (`systemd:<unit>`, `docker:<name>`, `pm2:<name>`, ...). It's the join
-  key between discovery, config, status and telemetry.
-- Set as a resource attribute on every signal. Source order: `distribution.kloudmate.service_id`, then
-  `KM_SERVICE_ID`, then `km.service_id` in `OTEL_RESOURCE_ATTRIBUTES`.
-- The collector's `kmserviceidentity` processor already relies on it; distros must never rewrite it.
-- `service.name` stays whatever the app or km-agent says; `km.service_id` is not a display name.
+- A stable service identifier assigned by KloudMate (`systemd:<unit>`, `docker:<name>`, `pm2:<name>`, ...). It
+  links a service across discovery, configuration, health and telemetry.
+- Sources, first match wins: `distribution.kloudmate.service_id`, then `KM_SERVICE_ID`.
+- Added to the resource of every signal only when the resource doesn't already carry `km.service_id` (for
+  example from `OTEL_RESOURCE_ATTRIBUTES`). A value that is already set is never rewritten.
+- It isn't a display name. `service.name` stays whatever the application or its configuration says.
 
-## 3. Precedence (ADR-0002: the app's own values always win)
+## 3. Precedence
 
 Lowest to highest:
 
-1. SDK defaults
-2. distro defaults
-3. generated file
-4. live OpAMP settings (in memory, not persisted)
-5. **any key the app sets itself in its environment** (`OTEL_*`, or the equivalent system property)
+1. upstream SDK defaults
+2. KloudMate defaults
+3. the configuration file
+4. remote settings (planned, see §4; in memory only)
+5. **any setting the application sets itself** (`OTEL_*` environment variables or the language's equivalent,
+   such as Java system properties)
 
-The generated file references the app's `OTEL_*` through `${VAR:-default}` substitutions, so the app's value wins
-inside the file as well. A live setting never overrides an app-set key. The distro records the origin of each
-effective value (`sdk_default`, `distro_default`, `file`, `opamp`, `app_env`) and reports a key it couldn't change
-as `overridden_by_app`, so the UI can say why a remote change didn't apply.
+A generated configuration file refers to the application's variables through `${OTEL_...:-default}`
+substitutions, so the application's values win inside the file too. Each effective value records where it came
+from (`sdk_default`, `distro_default`, `file`, `remote`, `app_env`).
 
-## 4. OpAMP (Phase 3)
+## 4. Remote configuration (planned)
 
-Server: embedded in km-agent on `127.0.0.1:4320` (later a UDS bound to the client's PID). Client identity:
-identifying `service.name`, `service.namespace`, `service.instance.id`; non-identifying `km.service_id`,
-`process.pid`, `telemetry.sdk.*`, `telemetry.distro.*`.
+An OpAMP client connects to the local KloudMate Agent. It reports health and effective configuration, and
+accepts these live settings:
 
-Capabilities: `ReportsEffectiveConfig`, `AcceptsRemoteConfig`, `ReportsRemoteConfig`, `ReportsHealth`,
-`ReportsHeartbeat`.
+| Key | Type |
+| --- | --- |
+| `logging_level` | `trace` \| `debug` \| `info` \| `warn` \| `error` \| `off` |
+| `sampling_rate` | float 0–1 (parent-based ratio) |
+| `send_traces` / `send_metrics` / `send_logs` | bool |
+| `deactivate_instrumentations` | comma-separated list |
+| `deactivate_all_instrumentations` | bool |
+| `metrics_profile` | `standard` \| `extended` \| `off` |
 
-Remote config is served under the `kloudmate` key, and the same body under `elastic`, so stock EDOT SDKs work
-unmodified. Keys (Elastic central-config names):
+A remote setting never overrides one the application sets itself; such keys are reported as
+`overridden_by_app`. Endpoint changes and newly enabled instrumentations need a restart.
 
-| Key | Type | Live? |
-| --- | --- | --- |
-| `logging_level` | `trace\|debug\|info\|warn\|error\|off` | yes |
-| `sampling_rate` | float 0–1 (parent-based ratio) | yes |
-| `send_traces` / `send_metrics` / `send_logs` | bool | yes |
-| `deactivate_instrumentations` | comma list | yes (pinned SDK versions only) |
-| `deactivate_all_instrumentations` | bool | yes |
-| `metrics_profile` | `standard\|extended\|off` | yes |
+## 5. Status file
 
-Endpoint changes and new instrumentations still need a restart. Reply `APPLIED` or `FAILED` with the config hash.
+At startup, before the SDK starts, each distribution writes `<status_dir>/<pid>.json`:
 
-## 4a. PHP tracer: settings file instead of OpAMP
-
-PHP-FPM runs many short-lived workers per pool. An OpAMP connection or poll per worker
-buys nothing for settings that rarely change, so the KloudMate PHP tracer
-(kloudmate/kloudmate-php) is managed through a file km-agent writes and every worker
-re-reads within a second of a change, with no reload:
-
-- Host: `/opt/kmagent/agents/php/km/settings/<unit>.conf`; container: `/opt/kloudmate/settings.conf`.
-  The ini points at it with `kloudmate.settings_file`.
-- `key=value` lines: `version` (a content hash), `enabled`, `sample_rate` (head sampling
-  for roots; the threshold goes into tracestate as `ot=th:`). Unknown keys are ignored.
-  Turning single instrumentations off is not a setting: the app uses the OpenTelemetry
-  variables (`OTEL_SDK_DISABLED`, `OTEL_PHP_DISABLED_INSTRUMENTATIONS`), as with the OTel PHP SDK.
-- Written atomically and only when the content changes.
-- Applied status: the tracer reports `kloudmate.settings.version` (and any
-  `kloudmate.settings.error`) on every root span. km-agent presents this in the same
-  shape as OpAMP health and effective config.
-
-## 5. Status reporting
-
-Every distro reports, through OpAMP when connected, else a file `/run/kmagent/sdk-status/<pid>.json`
-(New Relic-style health file). The directory is `distribution.kloudmate.status_dir`, else `KM_SDK_STATUS_DIR`, else
-the default; distros write only into an existing directory (km-agent creates it) and replace the file atomically:
+- `status_dir` comes from `distribution.kloudmate.status_dir`, else `KM_SDK_STATUS_DIR`, else
+  `/run/kmagent/sdk-status`.
+- The file is written only into an existing directory, and replaced atomically.
+- The check that writes it never throws. Where possible it is written in syntax that the runtime versions it
+  rejects can still parse.
 
 ```json
 {
@@ -109,15 +91,24 @@ the default; distros write only into an existing directory (km-agent creates it)
   "result": "ok",
   "reason": "",
   "started_at": "2026-11-19T10:00:00Z",
-  "heartbeat_at": "2026-11-19T10:05:00Z",
+  "heartbeat_at": "2026-11-19T10:00:00Z",
   "config_hash": "sha256:…",
-  "effective_config": { "sampling_rate": { "value": 0.25, "origin": "opamp" },
-                        "OTEL_SERVICE_NAME": { "value": "checkout", "origin": "app_env" } },
-  "overridden_by_app": ["sampling_rate"],
-  "instrumentations": ["flask", "requests", "psycopg2"]
+  "effective_config": {
+    "OTEL_EXPORTER_OTLP_ENDPOINT": { "value": "http://127.0.0.1:4318", "origin": "distro_default" },
+    "OTEL_SERVICE_NAME": { "value": "checkout", "origin": "app_env" }
+  },
+  "overridden_by_app": [],
+  "instrumentations": []
 }
 ```
 
-`result` is one of `ok`, `degraded`, `disabled`, `unsupported_runtime`, `denied`, `error`. `reason` is a short
-machine-readable code (`python_too_old`, `foreign_agent:ddtrace`, `config_parse_error`, ...). The startup check
-writes this before the SDK starts, in syntax old enough to parse on the versions it rejects, and never throws.
+| `result` | Meaning |
+| --- | --- |
+| `ok` | running as configured |
+| `degraded` | running, with a caveat in `reason` (e.g. `foreign_agent:ddtrace`) |
+| `disabled` | switched off on purpose (e.g. `sdk_disabled`) |
+| `unsupported_runtime` | runtime outside the supported range (e.g. `python_too_old`); the application runs untouched |
+| `denied` | the process matched the manifest's deny list |
+| `error` | the distribution failed (e.g. `config_parse_error`); the application still runs |
+
+`reason` is a short machine-readable code. Each language README lists its own codes.

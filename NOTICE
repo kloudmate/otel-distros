@@ -1,0 +1,6 @@
+KloudMate OpenTelemetry Distributions
+Copyright 2026 KloudMate
+
+This product layers on OpenTelemetry components (https://opentelemetry.io), licensed under the
+Apache License 2.0 and copyright The OpenTelemetry Authors. Release bundles that include upstream
+OpenTelemetry artifacts carry those artifacts' own license and notice files.

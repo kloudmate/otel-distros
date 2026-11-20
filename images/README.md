@@ -1,27 +1,19 @@
-# Kubernetes init images
+# Kubernetes images (planned)
 
-One small image per language, used by km-injector (plan Phase 5) as an image volume or, on kubelets without
-image volumes, as an init container that copies `/kloudmate/<lang>/` into a shared `emptyDir`.
+One small image per language, for injecting a distribution into pods without changing application images. Each
+image is mounted as an image volume, or, on clusters without image volumes, copied by an init container into a
+shared `emptyDir`.
 
 | Image | Contents |
 | --- | --- |
-| `ghcr.io/kloudmate/otel-distro-java:<ver>` | upstream agent jar + KM extension jar + `km-manifest.json` |
-| `ghcr.io/kloudmate/otel-distro-python:<ver>` | per-CPython-minor wheel cells (glibc and musl) + bootstrap |
-| `ghcr.io/kloudmate/otel-distro-nodejs:<ver>` | `node_modules` + register wrapper |
-| `ghcr.io/kloudmate/otel-distro-dotnet:<ver>` | upstream zip (glibc and musl) + KM plugin |
-| `ghcr.io/kloudmate/otel-distro-php:<ver>` | ABI-matched `.so` matrix (official ext 8.2–8.5, `kloudmate_php.so` 7.0–8.6 incl. ZTS/musl) + scoped package |
+| `ghcr.io/kloudmate/otel-distro-java:<version>` | upstream agent jar, KloudMate extension jar, `km-manifest.json` |
+| `ghcr.io/kloudmate/otel-distro-python:<version>` | per-CPython-minor package directories (glibc and musl), bootstrap |
+| `ghcr.io/kloudmate/otel-distro-nodejs:<version>` | `node_modules` and the register hook |
+| `ghcr.io/kloudmate/otel-distro-dotnet:<version>` | upstream automatic instrumentation (glibc and musl) and the KloudMate plugin |
 
-Rules:
+Principles:
 
-- `FROM scratch` (or `busybox` for the init-container copy), nothing that runs as the app.
-- Multi-arch (amd64, arm64), pinned by digest in the km-kube-agent chart. No `:latest` (today's Node and Python
-  images build from `:latest`, plan 0.4).
-- The image carries the same `km-manifest.json` as the host bundle, so km-injector makes the same runtime,
-  libc and deny decisions at admission as km-agent makes on a VM.
-
-## Layout (planned)
-
-```
-images/
-  java.Dockerfile  python.Dockerfile  nodejs.Dockerfile  dotnet.Dockerfile  php.Dockerfile
-```
+- `FROM scratch` (or `busybox` for the copy step). Nothing in the image runs as the application.
+- Multi-arch (amd64, arm64), referenced by digest, never `:latest`.
+- Each image carries the same `km-manifest.json` as the release, so the decision whether to inject into a pod
+  is the same one made on a host.

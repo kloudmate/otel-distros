@@ -1,70 +1,92 @@
-# KloudMate Java distro
+# KloudMate OpenTelemetry Java distribution
 
-An **extension jar** loaded by the stock upstream Java agent. We don't repackage or shade the agent.
+An extension for the upstream OpenTelemetry Java agent. The agent and its instrumentation are used exactly as
+released: nothing is repackaged, shaded or patched. The extension adds KloudMate defaults, service identity and a
+startup health check.
 
+| | |
+| --- | --- |
+| Built on | `opentelemetry-javaagent` 2.29.0 (SDK 1.63.0) |
+| Runtime | Java 8 and later, any JVM vendor |
+| Platforms | Linux x86-64, arm64 |
+| Status | Preview (0.1.0) |
+
+Each release is tested against one agent version, recorded in its `km-manifest.json`. Use it with that version.
+
+## How it loads
+
+**With the KloudMate Agent**, nothing changes in your app: the agent adds both jars to `JAVA_TOOL_OPTIONS`.
+
+**Manually:**
+
+```sh
+java -javaagent:/opt/otel/opentelemetry-javaagent.jar \
+     -Dotel.javaagent.extensions=/opt/otel/kloudmate-otel-extension.jar \
+     -Dotel.service.name=checkout \
+     -jar app.jar
 ```
--javaagent:/opt/kmagent/agents/java/stable/opentelemetry-javaagent.jar
--Dotel.javaagent.extensions=/opt/kmagent/agents/java/stable/kloudmate-otel-extension.jar
-```
 
-**Upstream base:** `opentelemetry-javaagent` **2.29.0** (`JAVA_AGENT_VERSION` in `scripts/otel-agent-bundles/build.sh`).
-The extension is built against the matching `opentelemetry-javaagent-extension-api` and is released for one
-agent minor at a time; `km-manifest.json` carries the agent version it was tested with.
+## Defaults
 
-## What it adds over the upstream agent
+Each default applies only when you haven't set the property (`-Dotel...`) or variable (`OTEL_...`) yourself.
 
-| Area | Upstream 2.29.0 default | KloudMate distro |
+| Setting | Upstream default | KloudMate default |
 | --- | --- | --- |
-| Runtime metrics | Stable JVM metrics only; experimental (buffer pools, GC cause, etc.) off | `otel.instrumentation.runtime-telemetry.emit-experimental-metrics=true` by default (plan 0.3) |
-| Resource | `service.name` from env | adds `km.service_id`, `telemetry.distro.name=kloudmate-java`, `telemetry.distro.version` (`ResourceProvider`) |
-| Config | env / system properties; `otel.experimental.config.file` | reads the generated declarative config and `distribution.kloudmate` (`DeclarativeConfigurationCustomizerProvider`) |
-| Endpoint | `http://localhost:4318` | local-agent discovery: UDS → `127.0.0.1:4318` → env (`AutoConfigurationCustomizerProvider`) |
-| Attached JVMs | runtime attach gets no config | the extension reads `KM_SERVICE_ID` / the config file path from agent args, so jattach-loaded JVMs get config |
-| Live config | none | OpAMP client (contrib `opamp-client` + `dynamic-control`) to `127.0.0.1:4320`, Phase 3 |
-| Profiling | none | optional `pyroscope-otel` wiring, off by default (plan Phase 4 P3) |
+| `otel.exporter.otlp.endpoint` | `http://localhost:4318` | `http://127.0.0.1:4318`, or `distribution.kloudmate.agent.otlp_endpoint` |
+| `otel.exporter.otlp.protocol` | `http/protobuf` | `http/protobuf` |
+| `otel.propagators` | `tracecontext,baggage` | `tracecontext,baggage` |
+| JVM runtime metrics | stable metrics only | stable and experimental (buffer pools, GC cause and more), from `runtime_metrics.profile` |
+| `telemetry.distro.*` | `opentelemetry-java-instrumentation` | `kloudmate-java` and the extension version |
+| `km.service_id` | – | from `KM_SERVICE_ID` or `-Dkm.service.id`, when the resource has none |
 
-## Status: 0.1.0
+`127.0.0.1` rather than `localhost` matters on hosts where `localhost` resolves to `::1` first and the local agent
+listens on IPv4 only.
 
-Done and tested (`smoke/run.sh`, `gradle test`):
+## Config file
 
-- **Env mode** (no config file, `KmAutoConfigCustomizer`): KloudMate defaults as the lowest-priority property
-  source (`otel.exporter.otlp.endpoint=http://127.0.0.1:4318`, `http/protobuf`, `tracecontext,baggage`,
-  experimental JVM metrics on). Anything the app sets as env or `-D` wins.
-- **Declarative mode** (`OTEL_CONFIG_FILE`, which agent 2.29.0 reads natively; `KmDeclarativeConfigCustomizer`):
-  reads `distribution.kloudmate`, fills only what the file leaves unset (OTLP endpoints from `agent.otlp_endpoint`,
-  `runtime_telemetry.emit_experimental_metrics/development`, or `enabled: false` for profile `off`). Unknown keys are ignored.
-- **Resource:** `km.service_id` (block → `KM_SERVICE_ID` → `-Dkm.service.id`) added only when the resource has none,
-  so an app-set value is never rewritten; `telemetry.distro.name=kloudmate-java`, `telemetry.distro.version`.
-- **Startup check + status:** `<status_dir>/<pid>.json` (contract §5) with `result`/`reason`, `config_hash`, and effective
-  config with origins (`distro_default`, `file`, `app_env`). Reasons today: `sdk_disabled`, `foreign_agent:<vendor>`
-  (from `/proc/self/cmdline`; JMX is never touched in premain). Written only if the directory exists;
-  `KM_SDK_STATUS_DIR` overrides the default `/run/kmagent/sdk-status`.
-- Never throws: every step is guarded; a failure logs one `[kloudmate-java]` line on stderr and the agent continues
-  with upstream behaviour. No `java.util.logging` (it breaks apps that install their own LogManager).
-- **Release:** `release.sh` builds the jar (reproducible), `km-manifest.json` with real sha256s and provenance,
-  and `SHA256SUMS`.
+The agent reads `OTEL_CONFIG_FILE` (or `-Dotel.config.file`) natively. The extension then:
 
-Smoke scenarios: (1) defaults: export reaches `127.0.0.1:4318` with KM attributes and `jvm.buffer.memory.used`;
-(2) the app's own `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_RESOURCE_ATTRIBUTES` / `OTEL_SERVICE_NAME` win; (3) a
-generated-style config file with exporters without endpoints, filled from the block.
+- reads `distribution.kloudmate`;
+- fills each `otlp_http` exporter that has no `endpoint` with the agent endpoint (without it, the agent would
+  send to `localhost:4318`);
+- adds `km.service_id` (unless the file sets it) and `telemetry.distro.*` to the resource;
+- sets the runtime-metrics options under `instrumentation/development.java.runtime_telemetry`, unless the file
+  sets them.
 
-Not yet:
+Runtime metric profiles: `standard` and `extended` turn on the experimental JVM metrics; `off` disables the
+runtime-telemetry instrumentation.
 
-- **UDS:** the Java OTLP exporters have no Unix-socket transport, so `agent.otlp_socket` is skipped (TCP fallback).
-- **Attached JVMs (jattach):** no env reaches them; `-Dkm.service.id` works if km-agent passes it, but a config-file
-  handoff for attached JVMs needs a contract decision.
-- `overridden_by_app` stays empty: with `${VAR:-default}` substitutions the file can't tell an app value from KM's.
-- OpAMP (Phase 3), `pyroscope-otel` (Phase 4).
+## Status file
 
-## Layout
+`<status_dir>/<pid>.json`, as described in the [specification](../contract/README.md#5-status-file). Reasons
+specific to Java:
 
+| `result` | `reason` | When |
+| --- | --- | --- |
+| `disabled` | `sdk_disabled` | `otel.sdk.disabled=true`, or `disabled: true` in the file |
+| `degraded` | `foreign_agent:<vendor>` | another vendor's `-javaagent` on the command line (Datadog, New Relic, Elastic, AppDynamics, Dynatrace, SkyWalking, Pinpoint) |
+
+The check reads `/proc/self/cmdline` and never touches JMX or `java.util.logging` during agent startup. Both
+break applications that install their own `LogManager`, such as JBoss and WildFly. Any failure in the extension
+logs one `[kloudmate-java]` line on stderr, and the agent continues with upstream behaviour.
+
+## Limitations
+
+- The Java OTLP exporters have no Unix-socket transport, so `agent.otlp_socket` is skipped and TCP is used.
+- `overridden_by_app` is always empty in this release.
+- Planned: remote configuration over OpAMP, continuous profiling, and a config-file handoff for JVMs attached at
+  runtime.
+
+## Development
+
+```sh
+gradle jar test        # extension jar (Java 8 bytecode) and unit tests
+smoke/run.sh           # end-to-end against a local OTLP sink (JDK, Gradle, Go)
+release.sh             # reproducible jar, km-manifest.json, SHA256SUMS
 ```
-java/
-  build.gradle.kts / settings.gradle.kts   Gradle, Java 8 bytecode, OTel deps compileOnly (agent provides them)
-  src/main/java/com/kloudmate/otel/
-    KmAutoConfigCustomizer.java          env mode: defaults, resource, status
-    KmDeclarativeConfigCustomizer.java   file mode: distribution.kloudmate, fills, status
-    KmSettings.java                      the block / env, endpoint discovery
-    KmStartupCheck.java  KmStatus.java   startup check, status file
-  km-manifest.json   release.sh   smoke/
-```
+
+The smoke test runs three scenarios:
+
+1. KloudMate defaults;
+2. your own `OTEL_*` settings win;
+3. a config file with exporters that have no endpoint.

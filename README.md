@@ -164,4 +164,4 @@ check three things:
 
 ## License
 
-Apache License 2.0. The upstream OpenTelemetry components keep their own licenses (Apache 2.0).
+Apache License 2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE). The upstream OpenTelemetry components keep their own licenses (Apache 2.0).
