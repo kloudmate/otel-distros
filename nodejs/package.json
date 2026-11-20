@@ -15,7 +15,7 @@
   "engines": { "node": "^18.19.0 || >=20.6.0" },
   "dependencies": {
     "@opentelemetry/api": "1.9.1",
-    "@opentelemetry/auto-instrumentations-node": "0.77.0",
+    "@opentelemetry/auto-instrumentations-node": "0.83.1",
     "@opentelemetry/configuration": "0.219.0",
     "@opentelemetry/core": "2.8.0",
     "@opentelemetry/instrumentation": "0.219.0",
