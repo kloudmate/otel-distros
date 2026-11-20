@@ -1,0 +1,28 @@
+{
+  "name": "@kloudmate/opentelemetry-node",
+  "version": "0.1.0",
+  "description": "KloudMate distribution of OpenTelemetry for Node.js: upstream auto-instrumentation with KloudMate defaults",
+  "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "https://github.com/kloudmate/otel-distros.git", "directory": "nodejs" },
+  "main": "register.js",
+  "exports": {
+    ".": "./register.js",
+    "./register": "./register.js",
+    "./register.mjs": "./register.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": ["register.js", "register.mjs", "src/", "km-manifest.json"],
+  "engines": { "node": "^18.19.0 || >=20.6.0" },
+  "dependencies": {
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/auto-instrumentations-node": "0.77.0",
+    "@opentelemetry/configuration": "0.219.0",
+    "@opentelemetry/core": "2.8.0",
+    "@opentelemetry/instrumentation": "0.219.0",
+    "@opentelemetry/resources": "2.8.0",
+    "@opentelemetry/sdk-node": "0.219.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

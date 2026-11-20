@@ -1,0 +1,32 @@
+# Opt-in file mode (upstream startNodeSDK is experimental). Traces have no endpoint: the distribution fills it from
+# distribution.kloudmate.agent. Metrics set one explicitly, which upstream 0.219 would otherwise ignore.
+file_format: "1.0"
+resource:
+  attributes:
+    - name: service.name
+      value: ${OTEL_SERVICE_NAME:-smoke-file}
+propagator:
+  composite:
+    - tracecontext:
+    - baggage:
+tracer_provider:
+  processors:
+    - batch:
+        schedule_delay: 200
+        exporter:
+          otlp_http: {}
+meter_provider:
+  readers:
+    - periodic:
+        interval: 1000
+        timeout: 500
+        exporter:
+          otlp_http:
+            endpoint: http://127.0.0.1:${SMOKE_FILE_PORT:-4318}/v1/metrics
+distribution:
+  kloudmate:
+    service_id: "systemd:smoke-file.service"
+    agent:
+      otlp_endpoint: http://127.0.0.1:${SMOKE_FILE_PORT:-4318}
+    status_dir: ${KM_SDK_STATUS_DIR}
+    some_future_key: ignored
