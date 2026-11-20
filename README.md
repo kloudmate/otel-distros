@@ -141,6 +141,14 @@ contains:
 
 Each release is tested against one exact upstream version, which its manifest records. Builds are reproducible.
 
+To release a language:
+
+1. bump `distro.version` in its `km-manifest.json`, and in its package file;
+2. run the **release** workflow (Actions → release → Run workflow) for that language.
+
+It builds with the language's `release.sh`, checks the manifest and the checksums, and publishes the GitHub
+release. Once the repository is public, it also attaches build provenance.
+
 ## Building and testing
 
 | Language | Build | Test | Requires |

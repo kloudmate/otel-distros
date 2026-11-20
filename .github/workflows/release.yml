@@ -1,0 +1,98 @@
+# Releases one language's distribution: builds it with that language's release.sh, then publishes a GitHub
+# release tagged <language>/v<version>. The version comes from <language>/km-manifest.json, so bump it there
+# first. Manual trigger only.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      language:
+        description: Distribution to release
+        required: true
+        type: choice
+        options: [java, python, nodejs, dotnet]
+      smoke:
+        description: Run the language's smoke test before releasing (it also runs locally)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write       # tag and release
+  id-token: write       # build provenance
+  attestations: write
+
+concurrency:
+  group: release-${{ inputs.language }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      LANGUAGE: ${{ inputs.language }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version and tag
+        id: v
+        run: |
+          version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["distro"]["version"])' "$LANGUAGE/km-manifest.json")"
+          tag="$LANGUAGE/v$version"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "::error::$tag already exists; bump distro.version in $LANGUAGE/km-manifest.json"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - if: inputs.language == 'java'
+        uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - if: inputs.language == 'java'
+        uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.14.3' }
+      - if: inputs.language == 'python'
+        uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - if: inputs.language == 'nodejs'
+        uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - if: inputs.smoke
+        uses: actions/setup-go@v5
+        with: { go-version-file: smoke/otlpsink/go.mod, cache: false }
+
+      - name: Smoke test
+        if: inputs.smoke
+        run: "$LANGUAGE/smoke/run.sh"
+
+      - name: Build
+        run: "$LANGUAGE/release.sh $RUNNER_TEMP/release"
+
+      - name: Check the manifest
+        run: |
+          pip install --quiet jsonschema==4.26.0
+          python3 -c 'import json,jsonschema,sys; jsonschema.Draft202012Validator(json.load(open(sys.argv[1])), format_checker=jsonschema.FormatChecker()).validate(json.load(open(sys.argv[2])))' \
+            manifest/km-manifest.schema.json "$RUNNER_TEMP/release/km-manifest.json"
+          (cd "$RUNNER_TEMP/release" && sha256sum -c SHA256SUMS)
+
+      # Artifact attestations need a public repository (or GitHub Enterprise Cloud for private ones).
+      - if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ runner.temp }}/release/*
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<NOTES
+          KloudMate $LANGUAGE distribution $VERSION.
+
+          Verify the files with \`sha256sum -c SHA256SUMS\`; \`km-manifest.json\` lists the supported runtimes and
+          platforms and the upstream version this release was tested with. See [$LANGUAGE/README.md]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$TAG/$LANGUAGE/README.md).
+          NOTES
+          gh release create "$TAG" "$RUNNER_TEMP"/release/* \
+            --target "$GITHUB_SHA" --title "$LANGUAGE $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
