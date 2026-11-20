@@ -84,6 +84,22 @@ jobs:
         with:
           subject-path: ${{ runner.temp }}/release/*
 
+      # The self-hosted runner has no gh: a pinned release, verified, cached in the runner's tool cache.
+      - name: Install gh
+        env:
+          GH_VERSION: 2.83.1
+          GH_SHA256: 1c5252d4ce3db07b51c01ff0b909583da6364ff3fdc06d0c2e75e62dc0380a34   # gh_2.83.1_linux_amd64.tar.gz
+        run: |
+          if command -v gh >/dev/null; then exit 0; fi
+          dir="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/km-ci-tools/gh-$GH_VERSION"
+          if [ ! -x "$dir/bin/gh" ]; then
+            curl -fsSL --retry 3 -o "$RUNNER_TEMP/gh.tgz" \
+              "https://github.com/cli/cli/releases/download/v$GH_VERSION/gh_${GH_VERSION}_linux_amd64.tar.gz"
+            echo "$GH_SHA256  $RUNNER_TEMP/gh.tgz" | sha256sum -c --quiet -
+            mkdir -p "$dir" && tar -xzf "$RUNNER_TEMP/gh.tgz" -C "$dir" --strip-components=1
+          fi
+          echo "$dir/bin" >> "$GITHUB_PATH"
+
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
