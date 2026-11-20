@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Local smoke test for the KloudMate Java distro: builds the extension and the OTLP sink, runs a sample
+# app under the upstream agent + extension, and asserts what reaches the sink and the status file.
+#   java/smoke/run.sh            (needs JDK 8+, Gradle, Go, curl; no Docker)
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
+AGENT_VERSION="${JAVA_AGENT_VERSION:-2.29.0}"
+AGENT_SHA256="${JAVA_AGENT_SHA256:-546531ca690a8603d2923b6db26bbda35c6409327b1e610430ae33c2f8f68050}"
+WORK="${SMOKE_WORK:-$(mktemp -d)}"
+CACHE="${SMOKE_CACHE:-$HOME/.cache/kloudmate-otel-distros}"
+mkdir -p "$WORK" "$CACHE"
+PIDS=()
+cleanup() { for p in "${PIDS[@]:-}"; do [ -n "$p" ] && kill "$p" 2>/dev/null || true; done; }
+trap cleanup EXIT
+
+agent="$CACHE/opentelemetry-javaagent-$AGENT_VERSION.jar"
+if [ ! -f "$agent" ]; then
+  curl -fsSL --retry 3 -o "$agent.tmp" \
+    "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v$AGENT_VERSION/opentelemetry-javaagent.jar"
+  mv "$agent.tmp" "$agent"
+fi
+echo "$AGENT_SHA256  $agent" | sha256sum -c --quiet -
+
+(cd "$ROOT/java" && gradle -q --no-daemon jar)
+ext="$ROOT/java/build/libs/kloudmate-otel-extension.jar"
+(cd "$ROOT/smoke/otlpsink" && go build -o "$WORK/otlpsink" .)
+javac -d "$WORK/app" "$HERE/App.java"
+
+"$WORK/otlpsink" -listen 127.0.0.1:4318 -out "$WORK/default.jsonl" 2>"$WORK/sink-default.log" & PIDS+=($!)
+"$WORK/otlpsink" -listen 127.0.0.1:14318 -out "$WORK/app.jsonl" 2>"$WORK/sink-app.log" & PIDS+=($!)
+"$WORK/otlpsink" -listen 127.0.0.1:24318 -out "$WORK/file.jsonl" 2>"$WORK/sink-file.log" & PIDS+=($!)
+sleep 1
+
+# Only the variables a scenario sets: the caller's OTEL_* and JAVA_TOOL_OPTIONS never leak in.
+run_app() {
+  local name="$1"; shift
+  mkdir -p "$WORK/status-$name"
+  env -i PATH="$PATH" HOME="$HOME" KM_SDK_STATUS_DIR="$WORK/status-$name" \
+    OTEL_METRIC_EXPORT_INTERVAL=1000 OTEL_BSP_SCHEDULE_DELAY=200 "$@" \
+    java -javaagent:"$agent" -Dotel.javaagent.extensions="$ext" -cp "$WORK/app" App \
+    >"$WORK/app-$name.log" 2>&1 || { cat "$WORK/app-$name.log"; exit 1; }
+}
+
+echo ">>> 1. env mode, KloudMate defaults (endpoint discovered, km.service_id from KM_SERVICE_ID)"
+run_app defaults KM_SERVICE_ID=systemd:smoke.service OTEL_SERVICE_NAME=smoke-defaults
+
+echo ">>> 2. env mode, the app's own OTEL_* win"
+run_app appenv KM_SERVICE_ID=systemd:smoke.service OTEL_SERVICE_NAME=smoke-app \
+  OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:14318 \
+  OTEL_RESOURCE_ATTRIBUTES=km.service_id=app-own,deployment.environment.name=prod \
+  SMOKE_TARGET=http://127.0.0.1:14318/health
+
+echo ">>> 3. declarative config file with distribution.kloudmate"
+run_app file OTEL_CONFIG_FILE="$HERE/config.yaml" SMOKE_FILE_PORT=24318 KM_SERVICE_ID=ignored-by-block \
+  SMOKE_TARGET=http://127.0.0.1:24318/health
+
+sleep 1
+python3 "$HERE/assert.py" "$WORK"
+echo ">>> java smoke: PASS ($WORK)"
