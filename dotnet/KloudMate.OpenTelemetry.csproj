@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    KloudMate plugin for OpenTelemetry .NET automatic instrumentation (OTEL_DOTNET_AUTO_PLUGINS).
+    netstandard2.0: one assembly for .NET 8+ and .NET Framework 4.6.2+.
+    OpenTelemetry packages are compile-only: upstream loads its own copies, and a plugin must reference
+    exactly the versions upstream bundles (1.15.3 for opentelemetry-dotnet-instrumentation 1.15.0).
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>KloudMate.OpenTelemetry</AssemblyName>
+    <RootNamespace>KloudMate.OpenTelemetry</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Version>0.1.0</Version>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <PathMap>$(MSBuildProjectDirectory)=/src</PathMap>
+    <DebugType>none</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Company>KloudMate</Company>
+    <Product>KloudMate OpenTelemetry .NET distribution</Product>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="OpenTelemetry" Version="1.15.3" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="smoke/**;test/**" />
+  </ItemGroup>
+</Project>
