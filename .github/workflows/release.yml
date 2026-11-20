@@ -54,8 +54,8 @@ jobs:
       - if: inputs.language == 'java'
         uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: '8.14.3' }
-      - if: inputs.language == 'python'
-        uses: actions/setup-python@v5
+      # Every language: the manifest check below needs pip, which the self-hosted runner doesn't have.
+      - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - if: inputs.language == 'nodejs'
         uses: actions/setup-node@v4
@@ -73,8 +73,8 @@ jobs:
 
       - name: Check the manifest
         run: |
-          pip install --quiet jsonschema==4.26.0
-          python3 -c 'import json,jsonschema,sys; jsonschema.Draft202012Validator(json.load(open(sys.argv[1])), format_checker=jsonschema.FormatChecker()).validate(json.load(open(sys.argv[2])))' \
+          python -m pip install --quiet jsonschema==4.26.0
+          python -c 'import json,jsonschema,sys; jsonschema.Draft202012Validator(json.load(open(sys.argv[1])), format_checker=jsonschema.FormatChecker()).validate(json.load(open(sys.argv[2])))' \
             manifest/km-manifest.schema.json "$RUNNER_TEMP/release/km-manifest.json"
           (cd "$RUNNER_TEMP/release" && sha256sum -c SHA256SUMS)
 
