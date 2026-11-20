@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kloudmate.com/schemas/km-manifest/v1.json",
+  "title": "KloudMate distro manifest",
+  "description": "Shipped next to every KloudMate distro artifact. km-agent (host) and km-injector (Kubernetes) read it to decide whether, and how, to activate the distro for a process. It replaces the hard-coded switches in vm/dropin.go and vm/python.go.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "distro", "runtime", "platforms", "entry", "artifacts", "provenance"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "distro": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "upstream"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^kloudmate-(java|python|nodejs|dotnet|php)$" },
+        "version": { "$ref": "#/$defs/semver" },
+        "upstream": {
+          "description": "The upstream OTel component this distro layers on, at the exact version tested.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["component", "version"],
+          "properties": {
+            "component": { "type": "string" },
+            "version": { "type": "string" }
+          }
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version_range"],
+      "properties": {
+        "name": { "enum": ["java", "python", "nodejs", "dotnet", "php"] },
+        "version_range": {
+          "description": "Supported runtime versions, semver range syntax (e.g. \">=8 <26\", \">=3.10 <3.15\").",
+          "type": "string",
+          "minLength": 1
+        },
+        "flavors": {
+          "description": "Runtime build flavors supported. PHP: nts/zts. Others: omit.",
+          "type": "array",
+          "items": { "enum": ["nts", "zts"] },
+          "uniqueItems": true
+        },
+        "sapis": {
+          "description": "PHP only: SAPIs the distro activates under.",
+          "type": "array",
+          "items": { "enum": ["fpm-fcgi", "apache2handler", "cgi-fcgi", "cli"] },
+          "uniqueItems": true
+        }
+      }
+    },
+    "platforms": {
+      "description": "OS / arch / libc cells this release was built and tested for.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["os", "arch", "libc"],
+        "properties": {
+          "os": { "enum": ["linux", "windows"] },
+          "arch": { "enum": ["amd64", "arm64"] },
+          "libc": { "enum": ["glibc", "musl", "msvcrt", "any"] },
+          "min_glibc": { "type": "string", "pattern": "^2\\.[0-9]+$" }
+        }
+      }
+    },
+    "deny": {
+      "description": "Processes the distro must never activate in. Globs match the executable path (exe) or the joined argv (cmdline).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exe": { "type": "array", "items": { "type": "string" } },
+        "cmdline": { "type": "array", "items": { "type": "string" } },
+        "env_present": {
+          "description": "Skip when any of these env vars is set (another vendor's agent).",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "entry": {
+      "description": "How the runtime loads the distro. Paths are relative to the install dir.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["java_tool_options", "node_options", "pythonpath", "dotnet_profiler", "php_ini"] },
+        "value": {
+          "description": "Template for the hook value; ${INSTALL_DIR} is replaced by km-agent.",
+          "type": "string"
+        },
+        "env": {
+          "description": "Extra env vars the activation sets (never OTEL_* the app already sets; plan §3 precedence).",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "reads_config_file": {
+          "description": "True when the distro reads OTEL_CONFIG_FILE; false keeps the runtime on env (Node today).",
+          "type": "boolean"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "url": { "type": "string", "format": "uri" },
+          "platform": {
+            "description": "Index into platforms when the artifact is per-cell; omit for arch-independent artifacts.",
+            "type": "integer",
+            "minimum": 0
+          },
+          "abi": {
+            "description": "PHP only: module API number, e.g. 20190902 for 7.4.",
+            "type": "string",
+            "pattern": "^[0-9]{8}$"
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_repo", "commit", "built_at"],
+      "properties": {
+        "source_repo": { "type": "string", "format": "uri" },
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "built_at": { "type": "string", "format": "date-time" },
+        "builder": { "type": "string" },
+        "attestation": {
+          "description": "URL of the SLSA provenance attestation for the release.",
+          "type": "string",
+          "format": "uri"
+        },
+        "licenses": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
+    }
+  }
+}
