@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 # Upstream versions this release is tested with. Keep in step with
 # scripts/otel-agent-bundles/python/requirements.txt in km-agent.
 dependencies = [
-  "opentelemetry-api==1.43.0",
+  "opentelemetry-api==1.45.2",
   "opentelemetry-sdk[file-configuration]==1.43.0",
   "opentelemetry-exporter-otlp-proto-http==1.43.0",
   "opentelemetry-instrumentation==0.64b0",
