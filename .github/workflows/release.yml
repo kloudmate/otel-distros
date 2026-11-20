@@ -27,7 +27,9 @@ concurrency:
 
 jobs:
   release:
-    runs-on: ubuntu-24.04
+    # Self-hosted only: no GitHub-hosted minutes. The runner needs Docker (the .NET build runs the SDK in a
+    # container), curl, git and python3; the setup-* steps below install Java, Python, Node and Go per run.
+    runs-on: [self-hosted, linux, x64]
     timeout-minutes: 30
     env:
       LANGUAGE: ${{ inputs.language }}
