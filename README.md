@@ -26,7 +26,7 @@ conventions. To send data somewhere else, change the endpoint. There's nothing t
 | Language | How it loads | Built on (upstream) | Minimum runtime | Platforms | Status | Docs |
 | --- | --- | --- | --- | --- | --- | --- |
 | Java | Extension jar for the OpenTelemetry Java agent | `opentelemetry-javaagent` 2.29.0 | Java 8 | Linux x86-64, arm64 (any JVM vendor) | **Preview (0.1.0)** | [java/](java/) |
-| Python | Distro package (`opentelemetry_distro` entry point) | `opentelemetry-distro` 0.64b0, SDK 1.43.0 | CPython 3.10 | Linux x86-64, arm64 (glibc) | In development | [python/](python/) |
+| Python | Distro package (`opentelemetry_distro` entry point) + `sitecustomize` bootstrap | `opentelemetry-sdk` 1.43.0, `opentelemetry-instrumentation` 0.64b0 | CPython 3.10 | Linux x86-64, arm64 (glibc) | **Preview (0.1.0)** | [python/](python/) |
 | Node.js | `--require` / `--import` register hook | `@opentelemetry/auto-instrumentations-node` 0.77.0 | Node.js 18.19 or 20.6 | Linux x86-64, arm64 | In development | [nodejs/](nodejs/) |
 | .NET | Plugin for OpenTelemetry .NET automatic instrumentation | `opentelemetry-dotnet-instrumentation` 1.15.0 | .NET 8; .NET Framework 4.6.2 (Windows) | Linux x86-64, arm64 (glibc); Windows x64 | In development | [dotnet/](dotnet/) |
 | PHP | KloudMate PHP tracer, shipped with the KloudMate Agent | own tracer, OTLP output | PHP 7.0 | Linux x86-64, arm64 (glibc, musl) | Available via the agent | [php/](php/) |
@@ -146,6 +146,7 @@ Each release is tested against one exact upstream version, which its manifest re
 | Language | Build | Test | Requires |
 | --- | --- | --- | --- |
 | Java | `cd java && gradle jar` | `gradle test` and `java/smoke/run.sh` | JDK 8+, Gradle 8, Go (smoke sink) |
+| Python | `python/release.sh` | `pytest python/tests` and `python/smoke/run.sh` | CPython 3.10+, Go (smoke sink); Docker optional |
 
 The smoke tests run a sample app against [`smoke/otlpsink`](smoke/otlpsink), a small local OTLP/HTTP receiver. They
 check three things:

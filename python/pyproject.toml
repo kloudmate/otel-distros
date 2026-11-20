@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kloudmate-opentelemetry-distro"
+version = "0.1.0"
+description = "KloudMate distribution of OpenTelemetry Python: upstream instrumentation with KloudMate defaults"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+# Upstream versions this release is tested with. Keep in step with
+# scripts/otel-agent-bundles/python/requirements.txt in km-agent.
+dependencies = [
+  "opentelemetry-api==1.43.0",
+  "opentelemetry-sdk[file-configuration]==1.43.0",
+  "opentelemetry-exporter-otlp-proto-http==1.43.0",
+  "opentelemetry-instrumentation==0.64b0",
+  "opentelemetry-instrumentation-system-metrics==0.64b0",
+  # Logs: attaches the stdlib logging handler in env and file mode (replaces the SDK's deprecated one).
+  "opentelemetry-instrumentation-logging==0.64b0",
+]
+
+[project.urls]
+Source = "https://github.com/kloudmate/otel-distros"
+
+[project.entry-points.opentelemetry_distro]
+kloudmate = "kloudmate_otel.distro:KloudMateDistro"
+
+[project.entry-points.opentelemetry_configurator]
+kloudmate = "kloudmate_otel.configurator:KloudMateConfigurator"
+
+[tool.setuptools.packages.find]
+where = ["src"]
