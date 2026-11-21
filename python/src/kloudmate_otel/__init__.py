@@ -6,5 +6,5 @@ used as is; this package only sets defaults, stamps the resource, reads ``distri
 reports a startup status. It never raises into the application.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 DISTRO_NAME = "kloudmate-python"

@@ -20,7 +20,7 @@ minor="$("$PY" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 bundle="$WORK/bundle"
 mkdir -p "$bundle/$minor"
 "$WORK/venv/bin/pip" -q install --target "$bundle/$minor" "$WORK"/dist/*.whl \
-  opentelemetry-instrumentation-urllib==0.64b0
+  opentelemetry-instrumentation-urllib==0.66b2
 cp "$ROOT/python/bootstrap/sitecustomize.py" "$bundle/"
 "$PY" -c 'import tomllib,sys; print(tomllib.load(open(sys.argv[1],"rb"))["project"]["version"])' \
   "$ROOT/python/pyproject.toml" > "$bundle/VERSION"

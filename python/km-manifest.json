@@ -2,8 +2,8 @@
   "schema_version": 1,
   "distro": {
     "name": "kloudmate-python",
-    "version": "0.1.0",
-    "upstream": { "component": "opentelemetry-distro", "version": "0.64b0 (sdk 1.43.0)" }
+    "version": "0.2.0",
+    "upstream": { "component": "opentelemetry-distro", "version": "0.66b2 (sdk 1.45.2)" }
   },
   "runtime": { "name": "python", "version_range": ">=3.10 <3.15" },
   "platforms": [

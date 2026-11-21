@@ -26,7 +26,7 @@ conventions. To send data somewhere else, change the endpoint. There's nothing t
 | Language | How it loads | Built on (upstream) | Minimum runtime | Platforms | Status | Docs |
 | --- | --- | --- | --- | --- | --- | --- |
 | Java | Extension jar for the OpenTelemetry Java agent | `opentelemetry-javaagent` 2.34.0 | Java 8 | Linux x86-64, arm64 (any JVM vendor) | **Preview (0.2.0)** | [java/](java/) |
-| Python | Distro package (`opentelemetry_distro` entry point) + `sitecustomize` bootstrap | `opentelemetry-sdk` 1.43.0, `opentelemetry-instrumentation` 0.64b0 | CPython 3.10 | Linux x86-64, arm64 (glibc) | **Preview (0.1.0)** | [python/](python/) |
+| Python | Distro package (`opentelemetry_distro` entry point) + `sitecustomize` bootstrap | `opentelemetry-sdk` 1.45.2, `opentelemetry-instrumentation` 0.66b2 | CPython 3.10 | Linux x86-64, arm64 (glibc) | **Preview (0.2.0)** | [python/](python/) |
 | Node.js | `--require` / `--import` register hook | `@opentelemetry/auto-instrumentations-node` 0.77.0, `sdk-node` 0.219.0 | Node.js 18.19 or 20.6 | Linux x86-64, arm64 | **Preview (0.1.0)** | [nodejs/](nodejs/) |
 | .NET | Plugin for OpenTelemetry .NET automatic instrumentation | `opentelemetry-dotnet-instrumentation` 1.15.0 | .NET 8 (.NET Framework 4.6.2 on Windows: built, not yet tested) | Linux x86-64, arm64 (glibc) | **Preview (0.1.0)** | [dotnet/](dotnet/) |
 | PHP | KloudMate PHP tracer, shipped with the KloudMate Agent | own tracer, OTLP output | PHP 7.0 | Linux x86-64, arm64 (glibc, musl) | Available via the agent | [php/](php/) |

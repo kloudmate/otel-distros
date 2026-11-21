@@ -56,7 +56,7 @@ def test_stamp_never_rewrites_service_id(monkeypatch):
 
 
 def test_complete_model_fills_only_unset(tmp_path):
-    from opentelemetry.sdk._configuration.file._loader import load_config_file
+    from opentelemetry.configuration import load_config_file
 
     cfg = tmp_path / "c.yaml"
     cfg.write_text(

@@ -31,7 +31,7 @@ def _resource_attr_from_env(key: str) -> str | None:
 def read_block(path: str) -> Mapping[str, Any] | None:
     """``distribution.kloudmate`` from the config file (env-substituted, validated), or None."""
     try:
-        from opentelemetry.sdk._configuration.file._loader import load_config_file
+        from opentelemetry.configuration import load_config_file
 
         dist = load_config_file(path).distribution or {}
         return dist.get("kloudmate")
@@ -65,7 +65,7 @@ def stamp_attributes(service_id: str | None) -> dict[str, str]:
 
 def complete_model(config: Any, settings: Settings, st: Status) -> None:
     """Fills what the file leaves unset; never replaces a value the file sets."""
-    from opentelemetry.sdk._configuration import models as m
+    from opentelemetry.configuration import models as m
 
     if config.resource is None:
         config.resource = m.Resource()
@@ -149,8 +149,8 @@ class KloudMateConfigurator(_OTelSDKConfigurator):
         _initialize_components(resource_attributes=attrs, **kwargs)
 
     def _configure_file(self, path: str) -> None:
-        from opentelemetry.sdk._configuration._sdk import configure_sdk
-        from opentelemetry.sdk._configuration.file._loader import load_config_file
+        from opentelemetry.configuration import configure_sdk
+        from opentelemetry.configuration import load_config_file
 
         st = Status()
         st.config_hash = file_hash(path)

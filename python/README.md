@@ -6,10 +6,10 @@ KloudMate defaults, service identity and a startup health check. Instrumentation
 
 | | |
 | --- | --- |
-| Built on | `opentelemetry-sdk` 1.43.0, `opentelemetry-instrumentation` 0.64b0 |
+| Built on | `opentelemetry-sdk` 1.45.2, `opentelemetry-instrumentation` 0.66b2 |
 | Runtime | CPython 3.10 – 3.14 |
 | Platforms | Linux x86-64, arm64 (glibc) |
-| Status | Preview (0.1.0) |
+| Status | Preview (0.2.0) |
 
 ## How it loads
 
