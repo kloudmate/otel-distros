@@ -22,10 +22,12 @@ if [ ! -f "$agent" ]; then
 fi
 echo "$AGENT_SHA256  $agent" | sha256sum -c --quiet -
 
-(cd "$ROOT/java" && gradle -q --no-daemon jar)
+(cd "$ROOT/java" && gradle -q --no-daemon jar agentJar)
 ext="$ROOT/java/build/libs/kloudmate-otel-extension.jar"
+kmagent="$ROOT/java/build/libs/kloudmate-javaagent.jar"
 (cd "$ROOT/smoke/otlpsink" && go build -o "$WORK/otlpsink" .)
 javac -d "$WORK/app" "$HERE/App.java"
+javac -d "$WORK/attach" "$HERE/Attach.java"
 
 "$WORK/otlpsink" -listen 127.0.0.1:4318 -out "$WORK/default.jsonl" 2>"$WORK/sink-default.log" & PIDS+=($!)
 "$WORK/otlpsink" -listen 127.0.0.1:14318 -out "$WORK/app.jsonl" 2>"$WORK/sink-app.log" & PIDS+=($!)
@@ -73,6 +75,40 @@ JVM_FLAGS=(-noverify)
 run_app noverify-file OTEL_CONFIG_FILE="$HERE/config.yaml" SMOKE_FILE_PORT=34318 OTEL_SERVICE_NAME=smoke-noverify-file \
   SMOKE_TARGET=http://127.0.0.1:34318/health
 JVM_FLAGS=()
+
+# kloudmate-javaagent.jar: the extension embedded, configured through a file the agent arguments name.
+run_kmagent() {
+  local name="$1" agentarg="$2"; shift 2
+  mkdir -p "$WORK/status-$name"
+  env -i PATH="$PATH" HOME="$HOME" KM_SDK_STATUS_DIR="$WORK/status-$name" \
+    OTEL_METRIC_EXPORT_INTERVAL=1000 OTEL_BSP_SCHEDULE_DELAY=200 "$@" \
+    java -javaagent:"$agentarg" -cp "$WORK/app" App >"$WORK/app-$name.log" 2>&1 || { cat "$WORK/app-$name.log"; exit 1; }
+}
+# What the KloudMate Agent writes before it attaches: <name> <status dir> <service.name> <km.service_id>.
+agent_props() {
+  mkdir -p "$WORK/$2"
+  printf '%s\n' "# written by the KloudMate Agent" "kloudmate.service_id=$4" "kloudmate.status_dir=$WORK/$2" \
+    "otel.service.name=$3" "otel.resource.attributes=deployment.environment.name=attach" > "$WORK/$1.properties"
+}
+
+echo ">>> 7. kloudmate-javaagent.jar alone: the extension is embedded"
+run_kmagent kmagent "$kmagent" KM_SERVICE_ID=systemd:smoke-kmagent.service OTEL_SERVICE_NAME=smoke-kmagent
+
+echo ">>> 8. kloudmate-javaagent.jar=<file>: the file configures it, and the app's own settings still win"
+agent_props agent status-attach smoke-attach-file proc:smoke-attach
+run_kmagent kmagent-file "$kmagent=$WORK/agent.properties"
+agent_props agent-app status-attach-app smoke-attach-file proc:smoke-attach
+run_kmagent kmagent-file-app "$kmagent=$WORK/agent-app.properties" OTEL_SERVICE_NAME=smoke-attach-app
+
+echo ">>> 9. runtime attach to a running JVM, configured by the file"
+agent_props agent-runtime status-runtime smoke-runtime-attach proc:smoke-runtime
+env -i PATH="$PATH" HOME="$HOME" OTEL_METRIC_EXPORT_INTERVAL=1000 OTEL_BSP_SCHEDULE_DELAY=200 \
+  SMOKE_SLEEP_MS=12000 SMOKE_REPEAT_MS=300 java -cp "$WORK/app" App >"$WORK/app-runtime.log" 2>&1 &
+app=$!
+sleep 2
+env -i PATH="$PATH" HOME="$HOME" java -cp "$WORK/attach" Attach "$app" "$kmagent" "$WORK/agent-runtime.properties" \
+  >"$WORK/attach.log" 2>&1 || { cat "$WORK/attach.log"; kill "$app"; exit 1; }
+wait "$app" || { cat "$WORK/app-runtime.log"; exit 1; }
 
 sleep 1
 python3 "$HERE/assert.py" "$WORK"

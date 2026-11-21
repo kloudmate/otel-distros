@@ -72,7 +72,7 @@ case "$LANG_" in
     javac --release 8 -d "$WORK/app" "$ROOT/java/smoke/App.java" 2>/dev/null
     for mode in copy image; do
       h="$(home $mode)"
-      ENVS=("JAVA_TOOL_OPTIONS=-javaagent:$h/javaagent.jar -Dotel.javaagent.extensions=$h/extensions/kloudmate-otel-extension.jar")
+      ENVS=("JAVA_TOOL_OPTIONS=-javaagent:$h/kloudmate-javaagent.jar")
       run "java-$mode" "$mode" "$MIRROR/eclipse-temurin:21-jre" java -cp /app App
     done
     ;;

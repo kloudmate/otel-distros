@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 // KloudMate Java distro: an extension jar for the stock upstream OpenTelemetry Java agent.
 // Everything OpenTelemetry is compileOnly: the agent provides it at runtime, so the jar
 // carries only KloudMate classes and service files.
@@ -71,3 +73,47 @@ tasks.jar {
 }
 
 tasks.test { useJUnitPlatform() }
+
+// kloudmate-javaagent.jar: the upstream agent with this extension embedded (upstream loads extensions/ from its own
+// jar) and an entry class that passes the agent arguments, a KloudMate properties file, to the extension. The one
+// jar to load at runtime attach, where no -Dotel.javaagent.extensions can be added.
+val attach by sourceSets.creating
+val upstreamAgent by configurations.creating { isTransitive = false }
+dependencies { upstreamAgent("io.opentelemetry.javaagent:opentelemetry-javaagent:$agentVersion") }
+
+val agentJar by tasks.registering(Jar::class) {
+    group = "build"
+    description = "The upstream agent with the KloudMate extension embedded"
+    archiveFileName.set("kloudmate-javaagent.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("libs"))
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+    val upstream = upstreamAgent.elements.map { it.single().asFile }
+    // The pinned sha256 in km-manifest.json: the repackaged jar is built only from the agent it names.
+    val pinned = (groovy.json.JsonSlurper().parse(file("km-manifest.json")) as Map<*, *>)["artifacts"]
+        .let { it as List<*> }.map { it as Map<*, *> }.single { it["path"] == "opentelemetry-javaagent.jar" }["sha256"] as String
+    inputs.property("pinnedSha256", pinned)
+    doFirst {
+        val got = MessageDigest.getInstance("SHA-256").digest(upstream.get().readBytes())
+            .joinToString("") { b -> "%02x".format(b) }
+        check(got == pinned) { "opentelemetry-javaagent $agentVersion sha256 $got, km-manifest.json pins $pinned" }
+    }
+    from(upstream.map { zipTree(it) }) { exclude("META-INF/MANIFEST.MF") }
+    from(attach.output)
+    into("extensions") { from(tasks.jar) }
+    manifest {
+        attributes(
+            "Implementation-Title" to "kloudmate-javaagent",
+            "Implementation-Version" to project.version,
+            "Implementation-Vendor" to "KloudMate",
+            "KloudMate-Agent-Version" to agentVersion,
+            "Main-Class" to "com.kloudmate.otel.attach.KmAgent",
+            "Premain-Class" to "com.kloudmate.otel.attach.KmAgent",
+            "Agent-Class" to "com.kloudmate.otel.attach.KmAgent",
+            "Can-Redefine-Classes" to "true",
+            "Can-Retransform-Classes" to "true",
+        )
+    }
+}
+tasks.assemble { dependsOn(agentJar) }

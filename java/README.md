@@ -1,8 +1,14 @@
 # KloudMate OpenTelemetry Java distribution
 
 An extension for the upstream OpenTelemetry Java agent. The agent and its instrumentation are used exactly as
-released: nothing is repackaged, shaded or patched. The extension adds KloudMate defaults, service identity and a
-startup health check.
+released: nothing is shaded or patched. The extension adds KloudMate defaults, service identity and a startup
+health check.
+
+Each release ships the extension in two forms:
+
+- `kloudmate-otel-extension.jar`, loaded next to the upstream agent with `-Dotel.javaagent.extensions`;
+- `kloudmate-javaagent.jar`, the upstream agent jar with the extension embedded, the way upstream supports. It
+  takes a properties file as its agent argument, so it can be configured when it's attached to a running JVM.
 
 | | |
 | --- | --- |
@@ -25,6 +31,37 @@ java -javaagent:/opt/otel/opentelemetry-javaagent.jar \
      -Dotel.service.name=checkout \
      -jar app.jar
 ```
+
+Or with the single jar:
+
+```sh
+java -javaagent:/opt/otel/kloudmate-javaagent.jar -jar app.jar
+```
+
+## Runtime attach
+
+A JVM that's already running can't be given environment variables or `-D` options. The KloudMate Agent writes a
+properties file and attaches `kloudmate-javaagent.jar` with the file's path as the agent argument, the same as
+`-javaagent:kloudmate-javaagent.jar=/run/kmagent/java/1234.properties` at startup:
+
+```properties
+kloudmate.service_id=proc:5f2a
+kloudmate.status_dir=/run/kmagent/sdk-status
+otel.service.name=checkout
+otel.resource.attributes=deployment.environment.name=prod
+```
+
+- `kloudmate.service_id`, `kloudmate.status_dir`, `kloudmate.agent.otlp_endpoint` and
+  `kloudmate.runtime_metrics.profile` work as in `distribution.kloudmate`, and take precedence over `KM_*`
+  variables.
+- `otel.*` properties apply below anything the application sets itself, and above the KloudMate defaults. Their
+  origin in the status file is `file`, and `config_hash` is the file's hash.
+- Settings the agent reads before extensions load, such as `otel.javaagent.*` and `otel.config.file`, have no
+  effect here.
+- Other keys are ignored, as is a file over 64 KiB.
+
+The attached agent starts with the instrumentation it would have at startup. Classes that were loaded before the
+attach are retransformed where the JVM allows it.
 
 ## Defaults
 
@@ -91,19 +128,21 @@ logs one `[kloudmate-java]` line on stderr, and the agent continues with upstrea
 
 - The Java OTLP exporters have no Unix-socket transport, so `agent.otlp_socket` and `KM_OTLP_SOCKET` are skipped and
   TCP is used.
-- Planned: remote configuration over OpAMP, continuous profiling, and a config-file handoff for JVMs attached at
-  runtime.
+- Planned: remote configuration over OpAMP, and continuous profiling.
 
 ## Development
 
 ```sh
-gradle jar test        # extension jar (Java 8 bytecode) and unit tests
-smoke/run.sh           # end-to-end against a local OTLP sink (JDK, Gradle, Go)
-release.sh             # reproducible jar, km-manifest.json, SHA256SUMS
+gradle jar agentJar test   # extension jar, kloudmate-javaagent.jar (Java 8 bytecode) and unit tests
+smoke/run.sh               # end-to-end against a local OTLP sink (JDK, Gradle, Go)
+release.sh                 # reproducible jars, km-manifest.json, SHA256SUMS
 ```
 
-The smoke test runs three scenarios:
+The smoke test runs these scenarios:
 
 1. KloudMate defaults;
 2. your own `OTEL_*` settings win;
-3. a config file with exporters that have no endpoint.
+3. a config file with exporters that have no endpoint;
+4. JVMs without bytecode verification (no instrumentation, unless the app turns it on);
+5. `kloudmate-javaagent.jar` alone, with a properties file, and with your own settings over the file's;
+6. a runtime attach to a running JVM, configured by a properties file.

@@ -5,7 +5,7 @@ an image volume, or, on clusters without image volumes, copy it into a shared `e
 
 | Image | Contents of `/autoinstrumentation` |
 | --- | --- |
-| `ghcr.io/kloudmate/otel-distro-java:<version>` | `javaagent.jar` (upstream), `extensions/kloudmate-otel-extension.jar` |
+| `ghcr.io/kloudmate/otel-distro-java:<version>` | `kloudmate-javaagent.jar`: the upstream agent with the KloudMate extension embedded |
 | `ghcr.io/kloudmate/otel-distro-python:<version>` | `sitecustomize.py`, one package directory per CPython minor and libc (`3.12/`, `3.12-musl/`, ...) |
 | `ghcr.io/kloudmate/otel-distro-nodejs:<version>` | `register.js`, `register.mjs`, `node_modules/` |
 | `ghcr.io/kloudmate/otel-distro-dotnet:<version>` | upstream automatic instrumentation for glibc and musl, with the KloudMate plugin in `net/` |
@@ -24,7 +24,7 @@ path; with an image volume, it is the volume's mount path followed by `/autoinst
 
 | Language | Variables |
 | --- | --- |
-| Java | `JAVA_TOOL_OPTIONS=-javaagent:<home>/javaagent.jar -Dotel.javaagent.extensions=<home>/extensions/kloudmate-otel-extension.jar` |
+| Java | `JAVA_TOOL_OPTIONS=-javaagent:<home>/kloudmate-javaagent.jar` |
 | Python | `PYTHONPATH=<home>` |
 | Node.js | `NODE_OPTIONS=--require <home>/register.js` (`--import <home>/register.mjs` for ES modules) |
 | .NET | `OTEL_DOTNET_AUTO_HOME=<home>`, `DOTNET_STARTUP_HOOKS=<home>/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll`, `CORECLR_ENABLE_PROFILING=1`, `CORECLR_PROFILER={918728DD-259F-4A6A-AC2B-B85E1B658318}`, `CORECLR_PROFILER_PATH=<home>/linux-x64/OpenTelemetry.AutoInstrumentation.Native.so` (`linux-musl-x64`, `linux-arm64` or `linux-musl-arm64` to match the pod), `OTEL_DOTNET_AUTO_PLUGINS=KloudMate.OpenTelemetry.Plugin, KloudMate.OpenTelemetry` |

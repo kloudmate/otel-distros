@@ -22,7 +22,8 @@
   },
   "artifacts": [
     { "path": "opentelemetry-javaagent.jar", "sha256": "da44154cea128257779c8a782b9651fd7c0c6aa177cd3810f9a867ac8509555d" },
-    { "path": "kloudmate-otel-extension.jar", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
+    { "path": "kloudmate-otel-extension.jar", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    { "path": "kloudmate-javaagent.jar", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
   ],
   "provenance": {
     "source_repo": "https://github.com/kloudmate/otel-distros",

@@ -34,18 +34,11 @@ fetch() { # url sha256 dest: download once into the cache, verify every time
   echo "$sum  $dest" | sha256sum -c --quiet -
 }
 
+# kloudmate-javaagent.jar: the upstream agent (pinned by sha256 in the build) with the extension embedded.
 layout_java() {
   "$ROOT/java/release.sh" "$REL" >/dev/null
-  local v sum
-  v="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["distro"]["upstream"]["version"])' "$REL/km-manifest.json")"
-  sum="$(python3 -c 'import json,sys; print(next(a["sha256"] for a in json.load(open(sys.argv[1]))["artifacts"] if a["path"]=="opentelemetry-javaagent.jar"))' "$REL/km-manifest.json")"
-  fetch "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v$v/opentelemetry-javaagent.jar" \
-    "$sum" "$CACHE/opentelemetry-javaagent-$v.jar"
   for arch in amd64 arm64; do
-    mkdir -p "$CTX/$arch/extensions"
-    cp "$CACHE/opentelemetry-javaagent-$v.jar" "$CTX/$arch/javaagent.jar"
-    cp "$REL/kloudmate-otel-extension.jar" "$CTX/$arch/extensions/"
-    cp "$REL/km-manifest.json" "$CTX/$arch/"
+    cp "$REL/kloudmate-javaagent.jar" "$REL/km-manifest.json" "$CTX/$arch/"
   done
 }
 

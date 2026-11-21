@@ -69,4 +69,24 @@ if st:
     c.check(st["overridden_by_app"] == ["OTEL_SERVICE_NAME"], f"[noverify-file] overridden_by_app {st['overridden_by_app']}")
 c.check(not spans_of("smoke-noverify-file"), "[noverify-file] no spans under a config file either")
 
+# 7-9. kloudmate-javaagent.jar
+c.common("kmagent", "default", "smoke-kmagent", "systemd:smoke-kmagent.service")
+c.common("kmagent-file", "default", "smoke-attach-file", "proc:smoke-attach")
+c.check(any(r.get("deployment.environment.name") == "attach" for r in c.resources("default", "traces")
+            if r.get("service.name") == "smoke-attach-file"), "[kmagent-file] resource attributes from the file")
+st = c.status("attach")
+c.check(st is not None, "[kmagent-file] status written to the file's status_dir")
+if st:
+    ec = st["effective_config"]
+    c.check(ec.get("OTEL_SERVICE_NAME", {}).get("origin") == "file", f"[kmagent-file] service name from the file {ec.get('OTEL_SERVICE_NAME')}")
+    c.check(ec.get("OTEL_EXPORTER_OTLP_ENDPOINT", {}).get("origin") == "distro_default", "[kmagent-file] endpoint still a KloudMate default")
+    c.check(st["config_hash"].startswith("sha256:"), "[kmagent-file] config_hash of the file")
+c.common("kmagent-file-app", "default", "smoke-attach-app", "proc:smoke-attach")
+st = c.status("attach-app")
+if st:
+    c.check(st["overridden_by_app"] == ["OTEL_SERVICE_NAME"], f"[kmagent-file-app] overridden_by_app {st['overridden_by_app']}")
+c.common("runtime-attach", "default", "smoke-runtime-attach", "proc:smoke-runtime")
+st = c.status("runtime")
+c.check(st is not None and st["result"] == "ok", f"[runtime-attach] status {st and (st['result'], st['reason'])}")
+
 c.done()

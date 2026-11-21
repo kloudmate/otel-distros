@@ -35,28 +35,38 @@ public final class KmAutoConfigCustomizer implements AutoConfigurationCustomizer
   @Override
   public void customize(AutoConfigurationCustomizer c) {
     final KmSettings settings;
-    final Map<String, String> defaults;
+    final KmAttachConfig attach;
+    final Map<String, String> supplied;
     try {
-      settings = KmSettings.fromEnv();
-      defaults = defaults(settings);
+      // The file the agent arguments name (kloudmate-javaagent.jar=<file>): how a runtime attach is configured.
+      attach = KmAttachConfig.load();
+      settings = attach.path != null ? KmSettings.fromBlock(attach.block) : KmSettings.fromEnv();
+      supplied = defaults(settings);
       if (KmStartupCheck.bytecodeVerificationOff()) {
         // No instrumentation by default in a JVM that never verifies the classes the agent rewrites. Lowest
         // priority like every default here: an app that sets it to true itself keeps its instrumentation.
-        defaults.put(DEFAULT_ENABLED, "false");
+        supplied.put(DEFAULT_ENABLED, "false");
       }
+      // The file's otel.* properties over the KloudMate defaults, still under the app's own settings.
+      supplied.putAll(attach.otel);
     } catch (Throwable t) {
       KmDistro.warn("disabled, running with upstream defaults", t);
       return;
     }
-    c.addPropertiesSupplier(() -> defaults);
+    c.addPropertiesSupplier(() -> supplied);
     c.addPropertiesCustomizer(
         config -> {
           try {
             KmStatus st = new KmStatus();
             st.serviceId = settings.serviceId;
-            for (String k : defaults.keySet()) {
+            if (attach.path != null) {
+              st.configHash = KmStartupCheck.hash(attach.path);
+              st.put(KmAttachConfig.PROPERTY, attach.path, "file");
+            }
+            for (String k : supplied.keySet()) {
               boolean app = KmDistro.setByApp(k);
-              st.put(KmDistro.envName(k), config.getString(k), app ? "app_env" : "distro_default");
+              String origin = app ? "app_env" : attach.otel.containsKey(k) ? "file" : "distro_default";
+              st.put(KmDistro.envName(k), config.getString(k), origin);
               if (app) {
                 st.overridden(KmDistro.envName(k));
               }
