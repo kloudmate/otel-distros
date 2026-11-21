@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 
 namespace KloudMate.OpenTelemetry
@@ -67,19 +69,87 @@ namespace KloudMate.OpenTelemetry
     }
 
     /// <summary>
-    /// KloudMate settings from the environment. The distribution.kloudmate block of a config file is not read
-    /// yet: upstream's file-based configuration for .NET is experimental and partial.
+    /// KloudMate settings: the environment (KM_SERVICE_ID, KM_SDK_STATUS_DIR), then, when OTEL_CONFIG_FILE points at a
+    /// file, its distribution.kloudmate block, which takes precedence (specification §1). The block is read by the
+    /// plugin itself, so it works whether or not upstream's experimental file-based configuration is on.
     /// </summary>
     internal sealed class Settings
     {
         internal string? ServiceId { get; private set; }
         internal string StatusDir { get; private set; } = Distro.DefaultStatusDir;
         internal string Endpoint { get; private set; } = Distro.DefaultEndpoint;
+        internal string? Socket { get; private set; }
+        internal string RuntimeMetricsProfile { get; private set; } = "standard";
+        internal string? ConfigFile { get; private set; }
+        internal string ConfigHash { get; private set; } = string.Empty;
+        internal bool FromFile { get; private set; }
+        private string? fileText;
 
-        internal static Settings FromEnvironment() => new Settings
+        internal static Settings Load()
         {
-            ServiceId = Env.Get("KM_SERVICE_ID"),
-            StatusDir = Env.Get("KM_SDK_STATUS_DIR") ?? Distro.DefaultStatusDir,
-        };
+            var s = new Settings
+            {
+                ServiceId = Env.Get("KM_SERVICE_ID"),
+                StatusDir = Env.Get("KM_SDK_STATUS_DIR") ?? Distro.DefaultStatusDir,
+            };
+            try
+            {
+                var file = Env.Get("OTEL_CONFIG_FILE");
+                if (file != null && File.Exists(file) && new FileInfo(file).Length <= 1024 * 1024)
+                {
+                    s.ConfigFile = file;
+                    s.fileText = File.ReadAllText(file);
+                    s.ConfigHash = Hash(s.fileText);
+                    s.Apply(MiniYaml.Block(s.fileText, "distribution", "kloudmate"));
+                }
+            }
+            catch (Exception e)
+            {
+                Distro.Warn("OTEL_CONFIG_FILE not read, using the environment", e);
+            }
+            return s;
+        }
+
+        /// <summary>Settings from a distribution.kloudmate block; unknown keys are ignored.</summary>
+        internal void Apply(Dictionary<string, object>? block)
+        {
+            if (block == null) return;
+            FromFile = true;
+            if (block.TryGetValue("service_id", out var id) && id is string sid && sid.Trim().Length > 0) ServiceId = sid.Trim();
+            if (block.TryGetValue("status_dir", out var dir) && dir is string sd && sd.Trim().Length > 0) StatusDir = sd.Trim();
+            if (block.TryGetValue("agent", out var a) && a is Dictionary<string, object> agent)
+            {
+                if (agent.TryGetValue("otlp_endpoint", out var ep) && ep is string e && e.Trim().Length > 0) Endpoint = e.Trim().TrimEnd('/');
+                if (agent.TryGetValue("otlp_socket", out var so) && so is string sock && sock.Trim().Length > 0) Socket = sock.Trim();
+            }
+            if (block.TryGetValue("runtime_metrics", out var r) && r is Dictionary<string, object> rm
+                && rm.TryGetValue("profile", out var p) && p is string profile
+                && (profile == "standard" || profile == "extended" || profile == "off"))
+            {
+                RuntimeMetricsProfile = profile;
+            }
+        }
+
+        /// <summary>The file and the settings it supplied, and the file's substitutions the app filled itself.</summary>
+        internal void Report(Status st)
+        {
+            if (ConfigFile == null) return;
+            st.Put("OTEL_CONFIG_FILE", ConfigFile, "app_env");
+            if (FromFile) st.Put("runtime_metrics.profile", RuntimeMetricsProfile, "file");
+            foreach (var name in Status.AppSubstitutions(fileText))
+            {
+                st.Put(name, Env.Get(name), "app_env");
+                st.Overridden(name);
+            }
+        }
+
+        private static string Hash(string text)
+        {
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            var d = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(text));
+            var b = new System.Text.StringBuilder("sha256:");
+            foreach (var x in d) b.Append(x.ToString("x2", System.Globalization.CultureInfo.InvariantCulture));
+            return b.ToString();
+        }
     }
 }

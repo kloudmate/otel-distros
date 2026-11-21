@@ -1,23 +1,36 @@
-// KloudMate plugin for OpenTelemetry .NET automatic instrumentation 1.15.0.
+// KloudMate plugin for OpenTelemetry .NET automatic instrumentation 1.19.1.
 // Loaded with OTEL_DOTNET_AUTO_PLUGINS="KloudMate.OpenTelemetry.Plugin, KloudMate.OpenTelemetry".
-// Upstream discovers these methods by name. Every method is guarded: a failure leaves upstream behaviour.
+// Implements the plugin API (IPlugin and its extension interfaces). Every method is guarded: a failure leaves
+// upstream behaviour.
 using System;
 using System.Collections.Generic;
+using OpenTelemetry.AutoInstrumentation.PluginApi;
+using OpenTelemetry.AutoInstrumentation.PluginApi.Telemetry;
 using OpenTelemetry.Exporter;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 namespace KloudMate.OpenTelemetry
 {
-    public sealed class Plugin
+    public sealed class Plugin : IPlugin, ITelemetryPlugin,
+        IConfigureTracesOptions<OtlpExporterOptions>,
+        IConfigureMetricsOptions<OtlpExporterOptions>,
+        IConfigureLogsOptions<OtlpExporterOptions>
     {
-        private readonly Settings settings = Settings.FromEnvironment();
+        private readonly Settings settings = Settings.Load();
 
         /// <summary>Before the SDK is configured: the startup check and the status file.</summary>
         public void Initializing()
         {
             try
             {
-                var st = new Status { ServiceId = Env.ResourceAttribute(Distro.ServiceIdKey) ?? settings.ServiceId };
+                var st = new Status
+                {
+                    ServiceId = Env.ResourceAttribute(Distro.ServiceIdKey) ?? settings.ServiceId,
+                    ConfigHash = settings.ConfigHash,
+                };
+                settings.Report(st);
                 Endpoints.Report(st, settings);
                 foreach (var k in new[] { "OTEL_SERVICE_NAME", "OTEL_TRACES_SAMPLER", "OTEL_TRACES_SAMPLER_ARG" })
                 {
@@ -30,6 +43,26 @@ namespace KloudMate.OpenTelemetry
             {
                 Distro.Warn("status not reported", e);
             }
+        }
+
+        public void Initialized()
+        {
+        }
+
+        public TracerProviderBuilder BeforeConfigureTracerProvider(TracerProviderBuilder builder) => builder;
+
+        public TracerProviderBuilder AfterConfigureTracerProvider(TracerProviderBuilder builder) => builder;
+
+        public void TracerProviderInitialized(TracerProvider tracerProvider)
+        {
+        }
+
+        public MeterProviderBuilder BeforeConfigureMeterProvider(MeterProviderBuilder builder) => builder;
+
+        public MeterProviderBuilder AfterConfigureMeterProvider(MeterProviderBuilder builder) => builder;
+
+        public void MeterProviderInitialized(MeterProvider meterProvider)
+        {
         }
 
         /// <summary>km.service_id when the resource has none; telemetry.distro.* names this distribution.</summary>

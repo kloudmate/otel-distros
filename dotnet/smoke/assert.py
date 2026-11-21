@@ -37,6 +37,22 @@ st = c.status("foreign")
 c.check(st is not None and (st["result"], st["reason"]) == ("degraded", "foreign_agent:ddtrace"),
         f"[foreign] status degraded/foreign_agent:ddtrace: {st and (st['result'], st['reason'])}")
 
+# 5. config file, upstream file mode off
+c.common("file-env", "file", "smoke-file-env", "systemd:smoke-file.service")
+st = c.status("file-env")
+c.check(st is not None, "[file-env] status file written to the block's status_dir")
+if st:
+    c.check(st["config_hash"].startswith("sha256:"), "[file-env] status config_hash")
+    c.check(st["km.service_id"] == "systemd:smoke-file.service", "[file-env] km.service_id from the block")
+    ep = st["effective_config"].get("OTEL_EXPORTER_OTLP_ENDPOINT", {})
+    c.check(ep.get("value") == "http://127.0.0.1:24318", f"[file-env] endpoint from the block {ep}")
+    c.check(st["overridden_by_app"] == ["OTEL_SERVICE_NAME"], f"[file-env] overridden_by_app {st['overridden_by_app']}")
+
+# 6. config file in upstream's file mode, the plugin listed in the file
+c.common("file-upstream", "upstream", "smoke-file", "systemd:smoke-file.service")
+st = c.status("file-upstream")
+c.check(st is not None and st["result"] == "ok", f"[file-upstream] the plugin loaded from plugins_list: {st and st['result']}")
+
 # 4. plugin missing
 c.check("app ran" in open(os.path.join(work, "app-noplugin.log")).read(), "[noplugin] the app ran without the plugin")
 c.check(c.status("noplugin") is None, "[noplugin] no status file (the plugin never loaded)")

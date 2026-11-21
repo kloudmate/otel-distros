@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Local smoke test for the KloudMate .NET distro: builds the plugin and a sample app with the .NET SDK in Docker,
-# lays out the upstream automatic instrumentation 1.15.0 with the plugin next to it, runs the app the way
+# lays out the upstream automatic instrumentation 1.19.1 with the plugin next to it, runs the app the way
 # instrument.sh would, and asserts what reaches the OTLP sink and the status file.
 #   dotnet/smoke/run.sh          (needs Docker, Go, curl; linux x64)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DN="$(cd "$HERE/.." && pwd)"
 ROOT="$(cd "$DN/.." && pwd)"
-VERSION="${DOTNET_AUTO_VERSION:-1.15.0}"
+VERSION="${DOTNET_AUTO_VERSION:-1.19.1}"
 RUNTIME_IMAGE="${DOTNET_RUNTIME_IMAGE:-mcr.microsoft.com/dotnet/runtime:8.0}"
 WORK="${SMOKE_WORK:-$(mktemp -d)}"
 CACHE="${SMOKE_CACHE:-$HOME/.cache/kloudmate-otel-distros}"
@@ -35,6 +35,8 @@ cp "$DN/build/out/KloudMate.OpenTelemetry.dll" "$home/net/"
 (cd "$ROOT/smoke/otlpsink" && go build -o "$WORK/otlpsink" .)
 "$WORK/otlpsink" -listen 127.0.0.1:4318 -out "$WORK/default.jsonl" 2>"$WORK/sink-default.log" & PIDS+=($!)
 "$WORK/otlpsink" -listen 127.0.0.1:14318 -out "$WORK/app.jsonl" 2>"$WORK/sink-app.log" & PIDS+=($!)
+"$WORK/otlpsink" -listen 127.0.0.1:24318 -out "$WORK/file.jsonl" 2>"$WORK/sink-file.log" & PIDS+=($!)
+"$WORK/otlpsink" -listen 127.0.0.1:34318 -out "$WORK/upstream.jsonl" 2>"$WORK/sink-upstream.log" & PIDS+=($!)
 sleep 1
 
 # The activation instrument.sh performs, plus the plugin; host network so 127.0.0.1 is the sink.
@@ -49,6 +51,7 @@ run_app() {
     -e KM_SDK_STATUS_DIR=/st -e OTEL_METRIC_EXPORT_INTERVAL=1000 -e OTEL_BSP_SCHEDULE_DELAY=200)
   for kv in "$@"; do envs+=(-e "$kv"); done
   docker run --rm --network host --user "$(id -u):$(id -g)" -v "$otelhome:/otel:ro" -v "$DN/build/smoke-app:/app:ro" \
+    -v "$HERE/config.yaml:/cfg/config.yaml:ro" \
     -v "$WORK/status-$name:/st" "${envs[@]}" "$RUNTIME_IMAGE" dotnet /app/SmokeApp.dll >"$WORK/app-$name.log" 2>&1 \
     || { cat "$WORK/app-$name.log"; exit 1; }
 }
@@ -68,6 +71,14 @@ run_app foreign "$home" OTEL_SERVICE_NAME=smoke-foreign DD_TRACE_ENABLED=false S
 echo ">>> 4. plugin missing: the app still runs on upstream defaults"
 nohome="$WORK/otel-noplugin"; cp -r "$home" "$nohome"; rm "$nohome/net/KloudMate.OpenTelemetry.dll"
 run_app noplugin "$nohome" OTEL_SERVICE_NAME=smoke-noplugin SMOKE_SLEEP_MS=500
+
+echo ">>> 5. a config file, upstream's file mode off: the plugin reads distribution.kloudmate"
+run_app file-env "$home" OTEL_CONFIG_FILE=/cfg/config.yaml SMOKE_FILE_PORT=24318 KM_SERVICE_ID=ignored-by-block \
+  OTEL_SERVICE_NAME=smoke-file-env SMOKE_TARGET=http://127.0.0.1:24318/health
+
+echo ">>> 6. a config file in upstream's file mode, the plugin listed in it"
+run_app file-upstream "$home" OTEL_CONFIG_FILE=/cfg/config.yaml SMOKE_FILE_PORT=34318 \
+  OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED=true OTEL_DOTNET_AUTO_PLUGINS= SMOKE_TARGET=http://127.0.0.1:34318/health
 
 sleep 1
 python3 "$HERE/assert.py" "$WORK"

@@ -2,10 +2,10 @@
   "schema_version": 1,
   "distro": {
     "name": "kloudmate-dotnet",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "upstream": {
       "component": "opentelemetry-dotnet-instrumentation",
-      "version": "1.15.0"
+      "version": "1.19.1"
     }
   },
   "runtime": {

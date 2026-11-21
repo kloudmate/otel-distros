@@ -24,7 +24,8 @@ namespace KloudMate.OpenTelemetry
                 {
                     options.Protocol = OtlpExportProtocol.HttpProtobuf;
                 }
-                if (!EndpointSetByApp(signal) && options.Protocol == OtlpExportProtocol.HttpProtobuf)
+                if (!EndpointSetByApp(signal) && options.Protocol == OtlpExportProtocol.HttpProtobuf
+                    && !SetElsewhere(options))
                 {
                     // Set in code, the HTTP endpoint is used as is: it must carry the signal path.
                     options.Endpoint = new Uri(s.Endpoint.TrimEnd('/') + path);
@@ -33,6 +34,23 @@ namespace KloudMate.OpenTelemetry
             catch (Exception e)
             {
                 Distro.Warn("OTLP " + signal.ToLowerInvariant() + " options not applied", e);
+            }
+        }
+
+        /// <summary>
+        /// True when the options already carry an endpoint other than the SDK's default for their protocol: upstream's
+        /// file-based configuration set it from the config file, which wins over the agent endpoint.
+        /// </summary>
+        internal static bool SetElsewhere(OtlpExporterOptions options)
+        {
+            try
+            {
+                var dflt = new OtlpExporterOptions { Protocol = options.Protocol }.Endpoint;
+                return options.Endpoint != null && dflt != null && options.Endpoint.GetLeftPart(UriPartial.Authority) != dflt.GetLeftPart(UriPartial.Authority);
+            }
+            catch
+            {
+                return false;
             }
         }
 

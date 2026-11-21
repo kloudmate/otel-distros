@@ -1,0 +1,33 @@
+# A config file with the KloudMate block. Read by the plugin in either upstream mode; with upstream's experimental
+# file-based configuration on (OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED=true), the plugin is listed here.
+file_format: "1.0"
+resource:
+  attributes:
+    - name: service.name
+      value: ${OTEL_SERVICE_NAME:-smoke-file}
+tracer_provider:
+  processors:
+    - batch:
+        schedule_delay: 200
+        exporter:
+          otlp_http: {}
+meter_provider:
+  readers:
+    - periodic:
+        interval: 1000
+        exporter:
+          otlp_http: {}
+instrumentation/development:
+  dotnet:
+    traces:
+      httpclient:
+plugins/development:
+  plugins_list: "KloudMate.OpenTelemetry.Plugin, KloudMate.OpenTelemetry"   # a string in 1.19.1, not a list
+distribution:
+  kloudmate:
+    service_id: "systemd:smoke-file.service"
+    agent:
+      otlp_endpoint: http://127.0.0.1:${SMOKE_FILE_PORT:-4318}   # exporters above set none
+    runtime_metrics: { profile: standard }
+    status_dir: ${KM_SDK_STATUS_DIR}
+    some_future_key: ignored

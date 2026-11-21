@@ -19,6 +19,7 @@ namespace KloudMate.OpenTelemetry
         private readonly List<string> overriddenByApp = new List<string>();
 
         internal string? ServiceId { get; set; }
+        internal string ConfigHash { get; set; } = string.Empty;
         internal string Result { get; private set; } = "ok";
         internal string Reason { get; private set; } = string.Empty;
 
@@ -38,6 +39,25 @@ namespace KloudMate.OpenTelemetry
         }
 
         internal IReadOnlyList<string> OverriddenByApp => overriddenByApp;
+
+        private static readonly System.Text.RegularExpressions.Regex Substitution =
+            new System.Text.RegularExpressions.Regex(@"\$\{(?:env:)?(OTEL_[A-Z0-9_]+)(?::-[^}]*)?\}");
+
+        /// <summary>
+        /// The ${OTEL_*} substitutions of a config file the app supplies itself (set in its environment), in file
+        /// order: the file's KloudMate values the app replaced.
+        /// </summary>
+        internal static List<string> AppSubstitutions(string? text)
+        {
+            var list = new List<string>();
+            if (text == null) return list;
+            foreach (System.Text.RegularExpressions.Match m in Substitution.Matches(text))
+            {
+                var name = m.Groups[1].Value;
+                if (name != "OTEL_CONFIG_FILE" && Env.IsSet(name) && !list.Contains(name)) list.Add(name);
+            }
+            return list;
+        }
 
         internal void Fail(string result, string reason)
         {
@@ -79,7 +99,7 @@ namespace KloudMate.OpenTelemetry
             b.Append(",\"distro\":{\"name\":").Append(Q(Distro.Name)).Append(",\"version\":").Append(Q(Distro.Version)).Append('}');
             b.Append(",\"result\":").Append(Q(Result)).Append(",\"reason\":").Append(Q(Reason));
             b.Append(",\"started_at\":").Append(Q(now)).Append(",\"heartbeat_at\":").Append(Q(now));
-            b.Append(",\"config_hash\":\"\",\"effective_config\":{");
+            b.Append(",\"config_hash\":").Append(Q(ConfigHash)).Append(",\"effective_config\":{");
             for (var i = 0; i < effective.Count; i++)
             {
                 if (i > 0) b.Append(',');
