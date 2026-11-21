@@ -148,6 +148,45 @@ function fileEndpoints(model, settings, st) {
   }
 }
 
+/**
+ * Adds resource attributes to a config model: telemetry.distro.* replace upstream's, any other key only when the
+ * file doesn't set it (km.service_id is never rewritten).
+ */
+function addResourceAttributes(model, attrs) {
+  model.resource = model.resource || {};
+  const distro = new Set(['telemetry.distro.name', 'telemetry.distro.version']);
+  const list = (Array.isArray(model.resource.attributes) ? model.resource.attributes : []).filter((a) => !(a && distro.has(a.name)));
+  for (const [name, value] of Object.entries(attrs)) {
+    if (!list.some((a) => a && a.name === name)) list.push({ name, value, type: 'string' });
+  }
+  model.resource.attributes = list;
+  return model;
+}
+
+/** Runs fn while the file config loader hands out models carrying attrs; the loader is restored afterwards. */
+function withFileResourceAttributes(attrs, fn) {
+  let FileConfigFactory;
+  try {
+    ({ FileConfigFactory } = require('@opentelemetry/configuration/build/src/FileConfigFactory'));
+  } catch {
+    return fn();
+  }
+  const original = FileConfigFactory.prototype.getConfigModel;
+  FileConfigFactory.prototype.getConfigModel = function () {
+    const model = original.call(this);
+    try {
+      return addResourceAttributes(model, attrs);
+    } catch {
+      return model;
+    }
+  };
+  try {
+    return fn();
+  } finally {
+    FileConfigFactory.prototype.getConfigModel = original;
+  }
+}
+
 function startFile(api, file) {
   const st = new Status();
   st.configHash = fileHash(file);
@@ -178,13 +217,14 @@ function startFile(api, file) {
   foreignAgents(st);
 
   const { startNodeSDK } = require('@opentelemetry/sdk-node');
-  const { getNodeAutoInstrumentations, getResourceDetectors } = require('@opentelemetry/auto-instrumentations-node');
+  const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
   const instrumentations = getNodeAutoInstrumentations();
   st.instrumentations = instrumentations.map((i) => i.instrumentationName.replace('@opentelemetry/instrumentation-', ''));
   st.write(settings.statusDir);
 
   const before = api.metrics.getMeterProvider();
-  const sdk = startNodeSDK({ instrumentations, resourceDetectors: [...getResourceDetectors(), kmDetector(attrs)] });
+  // sdk-node 0.223 builds the resource from the file alone (resourceDetectors is ignored): add ours to the model.
+  const sdk = withFileResourceAttributes(attrs, () => startNodeSDK({ instrumentations }));
   // startNodeSDK (experimental) enables instrumentations before it sets the global MeterProvider, so they keep
   // a no-op meter; NodeSDK hands them the provider explicitly. Do the same.
   const mp = api.metrics.getMeterProvider();
@@ -237,4 +277,4 @@ function start() {
   process.on('SIGTERM', onTerm);
 }
 
-module.exports = { start, defaults, settingsFromBlock };
+module.exports = { addResourceAttributes, start, defaults, settingsFromBlock };

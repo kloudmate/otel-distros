@@ -67,3 +67,13 @@ test('status: overridden_by_app from file substitutions, sorted', () => {
   st.overridden('OTEL_SERVICE_NAME');
   assert.deepStrictEqual(st.toJSON().overridden_by_app, ['OTEL_EXPORTER_OTLP_ENDPOINT', 'OTEL_SERVICE_NAME']);
 });
+
+test('file mode: resource attributes added to the model, km.service_id never rewritten', () => {
+  const { addResourceAttributes } = require('../src/start');
+  const m = { resource: { attributes: [{ name: 'service.name', value: 'web' }, { name: 'km.service_id', value: 'own' },
+    { name: 'telemetry.distro.name', value: 'opentelemetry-js' }] } };
+  addResourceAttributes(m, { 'km.service_id': 'systemd:x', 'telemetry.distro.name': 'kloudmate-nodejs', 'telemetry.distro.version': '0.2.0' });
+  const byName = Object.fromEntries(m.resource.attributes.map((a) => [a.name, a.value]));
+  assert.deepStrictEqual(byName, { 'service.name': 'web', 'km.service_id': 'own', 'telemetry.distro.name': 'kloudmate-nodejs', 'telemetry.distro.version': '0.2.0' });
+  assert.deepStrictEqual(addResourceAttributes({}, { a: '1' }).resource.attributes, [{ name: 'a', value: '1', type: 'string' }]);
+});

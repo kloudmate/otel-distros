@@ -5,11 +5,11 @@ KloudMate defaults, service identity and a startup health check. Instrumentation
 
 | | |
 | --- | --- |
-| Built on | `@opentelemetry/auto-instrumentations-node` 0.77.0, `@opentelemetry/sdk-node` 0.219.0 |
+| Built on | `@opentelemetry/auto-instrumentations-node` 0.81.2, `@opentelemetry/sdk-node` 0.223.2 |
 | Runtime | Node.js 18.19+ or 20.6+ (the upstream SDK's range) |
 | Module systems | CommonJS (`--require`) and ES modules (`--import`) |
 | Platforms | Linux x86-64, arm64 (pure JavaScript, no native addons) |
-| Status | Preview (0.1.0) |
+| Status | Preview (0.2.0) |
 
 ## How it loads
 
@@ -53,7 +53,8 @@ Other behaviour, compared with upstream `register`:
 ## Config file (opt-in)
 
 Upstream reads `OTEL_CONFIG_FILE` only through `startNodeSDK`, which is still experimental: it doesn't apply
-`sampler` settings yet, and in 0.219.0 it drops the metric exporter's `endpoint`. The KloudMate Agent therefore
+`sampler` settings yet, and in 0.223.2 it drops the metric exporter's `endpoint` and builds the resource from the
+file alone (resource detectors run only when the file lists them under `resource.detection/development`). The KloudMate Agent therefore
 keeps Node.js on environment variables (`reads_config_file: false` in the manifest). If you set `OTEL_CONFIG_FILE`
 yourself, the distribution:
 
