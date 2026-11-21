@@ -28,6 +28,9 @@ namespace KloudMate.OpenTelemetry
             if (value != null) effective.Add(new KeyValuePair<string, string[]>(key, new[] { value, origin }));
         }
 
+        /// <summary>Removes every value recorded for key.</summary>
+        internal void Remove(string key) => effective.RemoveAll(e => e.Key == key);
+
         /// <summary>A KloudMate-managed setting the app replaced with its own value (sorted, no duplicates).</summary>
         internal void Overridden(string key)
         {

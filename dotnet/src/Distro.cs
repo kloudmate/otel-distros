@@ -79,6 +79,7 @@ namespace KloudMate.OpenTelemetry
         internal string StatusDir { get; private set; } = Distro.DefaultStatusDir;
         internal string Endpoint { get; private set; } = Distro.DefaultEndpoint;
         internal string? Socket { get; private set; }
+        internal string? OpampEndpoint { get; private set; }
         internal string RuntimeMetricsProfile { get; private set; } = "standard";
         internal string? ConfigFile { get; private set; }
         internal string ConfigHash { get; private set; } = string.Empty;
@@ -112,6 +113,7 @@ namespace KloudMate.OpenTelemetry
                 ServiceId = Env.Get("KM_SERVICE_ID"),
                 StatusDir = Env.Get("KM_SDK_STATUS_DIR") ?? Distro.DefaultStatusDir,
                 Socket = Env.Get("KM_OTLP_SOCKET"),
+                OpampEndpoint = Env.Get("KM_OPAMP_ENDPOINT"),
             };
             try
             {
@@ -142,6 +144,7 @@ namespace KloudMate.OpenTelemetry
             {
                 if (agent.TryGetValue("otlp_endpoint", out var ep) && ep is string e && e.Trim().Length > 0) Endpoint = e.Trim().TrimEnd('/');
                 if (agent.TryGetValue("otlp_socket", out var so) && so is string sock && sock.Trim().Length > 0) Socket = sock.Trim();
+                if (agent.TryGetValue("opamp_endpoint", out var op) && op is string opamp && opamp.Trim().Length > 0) OpampEndpoint = opamp.Trim();
             }
             if (block.TryGetValue("runtime_metrics", out var r) && r is Dictionary<string, object> rm
                 && rm.TryGetValue("profile", out var p) && p is string profile

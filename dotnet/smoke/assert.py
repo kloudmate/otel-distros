@@ -68,4 +68,7 @@ if st:
 c.common("nosocket", "default", "smoke-nosocket", "systemd:smoke-nosocket.service")
 c.common("file-socket", "socket", "smoke-file-socket", "systemd:smoke-file-socket.service")
 
+# 8. OpAMP
+c.opamp("opamp", "smoke-opamp", "systemd:smoke-opamp.service")
+
 c.done()

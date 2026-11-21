@@ -40,6 +40,10 @@ cp "$DN/build/out/KloudMate.OpenTelemetry.dll" "$home/net/"
 # The KloudMate Agent's socket speaks OTLP/gRPC; containers mount its directory.
 mkdir -p "$WORK/km"
 "$WORK/otlpsink" -listen "grpc+unix:$WORK/km/otlp.sock" -out "$WORK/socket.jsonl" 2>"$WORK/sink-socket.log" & PIDS+=($!)
+# A stand-in for the KloudMate Agent's OpAMP server, serving one remote config.
+(cd "$ROOT/smoke/opampsink" && go build -o "$WORK/opampsink" .)
+printf '{"sampling_rate": 0, "logging_level": "debug"}' > "$WORK/remote.json"
+"$WORK/opampsink" -listen 127.0.0.1:4320 -out "$WORK/opamp.jsonl" -remote "$WORK/remote.json" 2>"$WORK/opamp.log" & PIDS+=($!)
 sleep 1
 
 # The activation instrument.sh performs, plus the plugin; host network so 127.0.0.1 is the sink.
@@ -93,6 +97,10 @@ run_app nosocket "$home" KM_SERVICE_ID=systemd:smoke-nosocket.service OTEL_SERVI
 echo ">>> 7c. upstream's file mode, otlp_grpc exporters without an endpoint: the socket"
 run_app file-socket "$home" OTEL_CONFIG_FILE=/cfg/config-socket.yaml \
   OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED=true OTEL_DOTNET_AUTO_PLUGINS= SMOKE_TARGET=http://127.0.0.1:4318/health
+
+echo ">>> 8. OpAMP: health and status reported, a remote sampling_rate of 0 applied live"
+run_app opamp "$home" KM_SERVICE_ID=systemd:smoke-opamp.service OTEL_SERVICE_NAME=smoke-opamp \
+  KM_OPAMP_ENDPOINT=http://127.0.0.1:4320/v1/opamp KM_OPAMP_POLL_INTERVAL=1 SMOKE_DELAY_MS=3000
 
 sleep 1
 python3 "$HERE/assert.py" "$WORK"

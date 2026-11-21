@@ -85,7 +85,10 @@ environment variables (`reads_config_file: false` in the manifest) until upstrea
 
 ## Limitations
 
-- **Planned:** remote configuration over OpAMP.
+- Over OpAMP ([remote configuration](../contract/README.md#4-remote-configuration)), `sampling_rate` and
+  `send_traces` apply live unless `OTEL_TRACES_SAMPLER` or upstream's file mode chooses the sampler; then they're
+  reported as not applied live. This is the plugin's own client, so every language reports the same way. Don't
+  also turn on upstream's built-in OpAMP client.
 - Upstream 1.20 supports .NET 10 and later only. This release stays on 1.19.1, the last one that runs .NET 8 and 9.
 
 ## Development
@@ -108,4 +111,5 @@ The smoke test runs these scenarios:
 5. a config file with upstream's file mode off: the plugin reads `distribution.kloudmate`;
 6. upstream's file mode, with the plugin listed in the file;
 7. the agent's socket: env mode, a socket path with nothing listening, and upstream's file mode with `otlp_grpc`
-   exporters.
+   exporters;
+8. OpAMP: health and status reported, and a remote `sampling_rate` applied live.
