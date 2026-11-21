@@ -59,6 +59,22 @@ st = c.status("broken")
 c.check(st is not None and st["result"] == "error" and st["reason"] == "config_parse_error",
         f"[broken] status error/config_parse_error: {st and (st['result'], st['reason'])}")
 
+# 6. the agent's socket
+sock = "unix://" + os.path.join(sys.argv[1], "otlp.sock")
+c.common("socket", "socket", "smoke-socket", "systemd:smoke-socket.service", SIGNALS)
+c.check(all(r["listener"].startswith("grpc+unix:") for r in c.records("socket")), "[socket] every request came over gRPC on the socket")
+st = c.status("socket")
+if st:
+    ec = st["effective_config"]
+    c.check(ec.get("OTEL_EXPORTER_OTLP_ENDPOINT") == {"value": sock, "origin": "distro_default"}, f"[socket] endpoint {ec.get('OTEL_EXPORTER_OTLP_ENDPOINT')}")
+    c.check(ec.get("OTEL_EXPORTER_OTLP_PROTOCOL") == {"value": "grpc", "origin": "distro_default"}, f"[socket] protocol {ec.get('OTEL_EXPORTER_OTLP_PROTOCOL')}")
+c.common("socket-nogrpc", "default", "smoke-nogrpc", "systemd:smoke-nogrpc.service", SIGNALS)
+c.common("file-socket", "socket", "smoke-file-socket", "systemd:smoke-file-socket.service", SIGNALS)
+st = c.status("file-socket")
+if st:
+    lg = st["effective_config"].get("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", {})
+    c.check(lg == {"value": sock, "origin": "distro_default"}, f"[file-socket] logs endpoint {lg}")
+
 # 5. Python 2.7 (when Docker was available)
 if os.path.isdir(os.path.join(sys.argv[1], "status-py27")):
     st = c.status("py27")

@@ -4,8 +4,8 @@ using OpenTelemetry.Exporter;
 namespace KloudMate.OpenTelemetry
 {
     /// <summary>
-    /// Local-agent endpoint and protocol, applied only where the app set nothing itself. The .NET OTLP exporter has no
-    /// Unix-socket transport, so the TCP endpoint 127.0.0.1:4318 is used (not localhost, which resolves to ::1 first on
+    /// Local-agent endpoint and protocol, applied only where the app set nothing itself: the agent's socket (OTLP/gRPC)
+    /// when it is used (Settings.SocketPath), else TCP 127.0.0.1:4318 (not localhost, which resolves to ::1 first on
     /// many hosts).
     /// </summary>
     internal static class Endpoints
@@ -20,7 +20,18 @@ namespace KloudMate.OpenTelemetry
         {
             try
             {
-                if (!ProtocolSetByApp(signal))
+                // Env mode moves the exporter to the socket; in upstream's file mode only an otlp_grpc exporter
+                // without an endpoint takes it, as the file names the protocol.
+                var sock = s.SocketPath();
+                if (sock != null && !SetElsewhere(options)
+                    && (!s.UpstreamFileMode || options.Protocol == OtlpExportProtocol.Grpc))
+                {
+                    options.Protocol = OtlpExportProtocol.Grpc;
+                    options.Endpoint = AgentSocket.Endpoint;
+                    options.HttpClientFactory = () => AgentSocket.Client(sock, options.TimeoutMilliseconds);
+                    return;
+                }
+                if (!ProtocolSetByApp(signal) && !s.UpstreamFileMode)
                 {
                     options.Protocol = OtlpExportProtocol.HttpProtobuf;
                 }
@@ -56,6 +67,13 @@ namespace KloudMate.OpenTelemetry
 
         internal static void Report(Status st, Settings s)
         {
+            var sock = s.UpstreamFileMode ? null : s.SocketPath();
+            if (sock != null)
+            {
+                st.Put("OTEL_EXPORTER_OTLP_ENDPOINT", "unix://" + sock, "distro_default");
+                st.Put("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc", "distro_default");
+                return;
+            }
             var ep = Env.Get("OTEL_EXPORTER_OTLP_ENDPOINT");
             st.Put("OTEL_EXPORTER_OTLP_ENDPOINT", ep ?? s.Endpoint, ep != null ? "app_env" : "distro_default");
             if (ep != null) st.Overridden("OTEL_EXPORTER_OTLP_ENDPOINT");

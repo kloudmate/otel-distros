@@ -63,8 +63,42 @@ def stamp_attributes(service_id: str | None) -> dict[str, str]:
     return attrs
 
 
-def complete_model(config: Any, settings: Settings, st: Status) -> None:
-    """Fills what the file leaves unset; never replaces a value the file sets."""
+def _exporters(config: Any):
+    """(signal, exporter model) for every exporter in the file."""
+    for p in (config.tracer_provider.processors if config.tracer_provider else None) or []:
+        for proc in (p.batch, p.simple):
+            if proc and proc.exporter:
+                yield "TRACES", proc.exporter
+    for r in (config.meter_provider.readers if config.meter_provider else None) or []:
+        if r.periodic and r.periodic.exporter:
+            yield "METRICS", r.periodic.exporter
+    for p in (config.logger_provider.processors if config.logger_provider else None) or []:
+        for proc in (p.batch, p.simple):
+            if proc and proc.exporter:
+                yield "LOGS", proc.exporter
+
+
+def fill_grpc_socket(config: Any, target: str) -> list[str]:
+    """Points every otlp_grpc exporter without an endpoint at the agent's socket (target is ``unix:///path``),
+    without TLS unless the file configures it. Returns the signals it filled."""
+    from opentelemetry.configuration import models as m
+
+    filled: list[str] = []
+    for sig, exp in _exporters(config):
+        g = getattr(exp, "otlp_grpc", None)
+        if g is None or g.endpoint:
+            continue
+        g.endpoint = target
+        if g.tls is None:
+            g.tls = m.GrpcTls(insecure=True)
+        if sig not in filled:
+            filled.append(sig)
+    return filled
+
+
+def complete_model(config: Any, settings: Settings, st: Status, sock: str | None = None) -> list[str]:
+    """Fills what the file leaves unset; never replaces a value the file sets. ``sock`` is the agent's socket
+    target, for otlp_grpc exporters without an endpoint. Returns the signals pointed at the socket."""
     from opentelemetry.configuration import models as m
 
     if config.resource is None:
@@ -96,9 +130,13 @@ def complete_model(config: Any, settings: Settings, st: Status) -> None:
             if exp is not None and not exp.endpoint:
                 exp.endpoint, filled = base + "/v1/logs", filled + 1
     st.put("OTEL_EXPORTER_OTLP_ENDPOINT", base, "distro_default" if filled else "file")
+    socket_signals = fill_grpc_socket(config, sock) if sock else []
+    for sig in socket_signals:
+        st.put(f"OTEL_EXPORTER_OTLP_{sig}_ENDPOINT", sock, "distro_default")
     st.put("runtime_metrics.profile", settings.runtime_metrics_profile, "file")
     if config.disabled:
         st.fail("disabled", "sdk_disabled")
+    return socket_signals
 
 
 class _ConfigFileError(Exception):
@@ -166,7 +204,11 @@ class KloudMateConfigurator(_OTelSDKConfigurator):
             st.write(Settings.from_block(None).status_dir)
             raise _ConfigFileError(str(exc)) from exc
         settings = Settings.from_block((config.distribution or {}).get("kloudmate"))
-        complete_model(config, settings, st)
+        # The environment as the app left it: the distro's defaults are in it now, so leave them out.
+        app_env = {k: v for k, v in os.environ.items() if k not in _distro.DEFAULTS or k in _distro.APP_SET}
+        for sig in complete_model(config, settings, st, settings.socket_target(app_env)):
+            # Upstream's builder ignores tls on otlp_grpc (0.66b2); the exporter reads this instead.
+            os.environ.setdefault(f"OTEL_EXPORTER_OTLP_{sig}_INSECURE", "true")
         st.check_foreign_agents()
         st.write(settings.status_dir)
         remember(st, settings.status_dir)

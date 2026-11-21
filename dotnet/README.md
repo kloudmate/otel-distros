@@ -39,8 +39,8 @@ Each default applies only when you haven't set the variable yourself.
 
 | Setting | Upstream default | KloudMate default |
 | --- | --- | --- |
-| OTLP endpoint | `http://localhost:4318` | `http://127.0.0.1:4318` (per signal: `/v1/traces`, `/v1/metrics`, `/v1/logs`) |
-| OTLP protocol | `http/protobuf` | `http/protobuf` |
+| OTLP endpoint | `http://localhost:4318` | `http://127.0.0.1:4318` (per signal: `/v1/traces`, `/v1/metrics`, `/v1/logs`); the agent's socket when it is used ([rules](../contract/README.md#the-agents-socket)) |
+| OTLP protocol | `http/protobuf` | `http/protobuf`; `grpc` over the agent's socket |
 | Propagators | `tracecontext,baggage` | `tracecontext,baggage` |
 | Runtime and process metrics | on | on |
 | `telemetry.distro.*` | `opentelemetry-dotnet-instrumentation` | `kloudmate-dotnet` and the plugin version |
@@ -85,7 +85,6 @@ environment variables (`reads_config_file: false` in the manifest) until upstrea
 
 ## Limitations
 
-- **No Unix sockets.** The .NET OTLP exporter has no Unix-socket transport, so TCP is used.
 - **Planned:** remote configuration over OpAMP.
 - Upstream 1.20 supports .NET 10 and later only. This release stays on 1.19.1, the last one that runs .NET 8 and 9.
 
@@ -107,4 +106,6 @@ The smoke test runs these scenarios:
 3. another vendor's agent is reported as `degraded`;
 4. without the plugin, the app still runs on upstream defaults;
 5. a config file with upstream's file mode off: the plugin reads `distribution.kloudmate`;
-6. upstream's file mode, with the plugin listed in the file.
+6. upstream's file mode, with the plugin listed in the file;
+7. the agent's socket: env mode, a socket path with nothing listening, and upstream's file mode with `otlp_grpc`
+   exporters.

@@ -33,8 +33,8 @@ Each default applies only when you haven't set the variable yourself.
 
 | Variable | Upstream default | KloudMate default |
 | --- | --- | --- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | `http://127.0.0.1:4318` |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | `http/protobuf` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | `http://127.0.0.1:4318`; `unix://<socket>` over the agent's socket ([rules](../contract/README.md#the-agents-socket)) |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | `http/protobuf`; `grpc` over the agent's socket |
 | `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` / `OTEL_LOGS_EXPORTER` | `otlp` | `otlp` |
 | `OTEL_PROPAGATORS` | `tracecontext,baggage` | `tracecontext,baggage` |
 | `OTEL_NODE_DISABLED_INSTRUMENTATIONS` | `fs`, `host-metrics` off | also `router`, when you set neither instrumentation list. Express 5 runs on `router`, and the express instrumentation already traces it, so router spans would double every middleware |
@@ -80,8 +80,6 @@ file.
 
 ## Limitations
 
-- The upstream OTLP exporters take no Unix-socket path from configuration, so `agent.otlp_socket` is skipped and
-  TCP is used.
 - Planned: remote configuration over OpAMP, and optional continuous profiling.
 
 ## Development
@@ -92,11 +90,11 @@ smoke/run.sh             # end-to-end against a local OTLP sink (Go; Docker opti
 release.sh               # npm tarball, package-lock.json, km-manifest.json, SHA256SUMS
 ```
 
-The smoke test runs six scenarios:
+The smoke test runs these scenarios:
 
 1. CommonJS defaults;
-2. your own `OTEL_*` settings win;
+2. your own `OTEL_*` settings win, over the agent's socket too;
 3. ES modules;
-4. a config file;
+4. a config file, and the agent's socket with and without a config file (a missing socket falls back to TCP);
 5. SIGTERM still exits and flushes;
 6. Node.js 16 (the app runs, and the status file says `node_too_old`).

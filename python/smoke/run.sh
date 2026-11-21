@@ -24,11 +24,20 @@ mkdir -p "$bundle/$minor"
 cp "$ROOT/python/bootstrap/sitecustomize.py" "$bundle/"
 "$PY" -c 'import tomllib,sys; print(tomllib.load(open(sys.argv[1],"rb"))["project"]["version"])' \
   "$ROOT/python/pyproject.toml" > "$bundle/VERSION"
+# The same bundle with the OTLP/gRPC exporter, which the agent's socket needs.
+bundle_grpc="$WORK/bundle-grpc"
+mkdir -p "$bundle_grpc/$minor"
+"$WORK/venv/bin/pip" -q install --target "$bundle_grpc/$minor" "$WORK"/dist/*.whl \
+  opentelemetry-instrumentation-urllib==0.66b2 opentelemetry-exporter-otlp-proto-grpc==1.45.2
+cp "$bundle/sitecustomize.py" "$bundle/VERSION" "$bundle_grpc/"
 
 (cd "$ROOT/smoke/otlpsink" && go build -o "$WORK/otlpsink" .)
 "$WORK/otlpsink" -listen 127.0.0.1:4318 -out "$WORK/default.jsonl" 2>"$WORK/sink-default.log" & PIDS+=($!)
 "$WORK/otlpsink" -listen 127.0.0.1:14318 -out "$WORK/app.jsonl" 2>"$WORK/sink-app.log" & PIDS+=($!)
 "$WORK/otlpsink" -listen 127.0.0.1:24318 -out "$WORK/file.jsonl" 2>"$WORK/sink-file.log" & PIDS+=($!)
+# The KloudMate Agent's socket speaks OTLP/gRPC.
+SOCK="$WORK/otlp.sock"
+"$WORK/otlpsink" -listen "grpc+unix:$SOCK" -out "$WORK/socket.jsonl" 2>"$WORK/sink-socket.log" & PIDS+=($!)
 sleep 1
 
 # Only what a scenario sets, as km-agent's activation would: PYTHONPATH and the KM_/OTEL_ vars.
@@ -60,6 +69,16 @@ run_app file-app OTEL_CONFIG_FILE="$HERE/config.yaml" SMOKE_FILE_PORT=24318 OTEL
 echo ">>> 4. broken config file: the app still runs"
 printf 'file_format: "1.0"\ntracer_provider: [not, a, map]\n' > "$WORK/broken.yaml"
 run_app broken OTEL_CONFIG_FILE="$WORK/broken.yaml" SMOKE_SLEEP_S=0
+
+echo ">>> 6. the agent's socket, with the gRPC exporter installed"
+run_app socket PYTHONPATH="$bundle_grpc" KM_SERVICE_ID=systemd:smoke-socket.service OTEL_SERVICE_NAME=smoke-socket \
+  KM_OTLP_SOCKET="$SOCK"
+
+echo ">>> 6b. the agent's socket without the gRPC exporter: TCP"
+run_app socket-nogrpc KM_SERVICE_ID=systemd:smoke-nogrpc.service OTEL_SERVICE_NAME=smoke-nogrpc KM_OTLP_SOCKET="$SOCK"
+
+echo ">>> 6c. a config file whose otlp_grpc exporters have no endpoint: the socket"
+run_app file-socket PYTHONPATH="$bundle_grpc" OTEL_CONFIG_FILE="$HERE/config-socket.yaml" SMOKE_SOCKET="$SOCK"
 
 if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
   echo ">>> 5. Python 2.7: bootstrap parses, app runs, status says why"

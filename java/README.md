@@ -89,7 +89,8 @@ logs one `[kloudmate-java]` line on stderr, and the agent continues with upstrea
 
 ## Limitations
 
-- The Java OTLP exporters have no Unix-socket transport, so `agent.otlp_socket` is skipped and TCP is used.
+- The Java OTLP exporters have no Unix-socket transport, so `agent.otlp_socket` and `KM_OTLP_SOCKET` are skipped and
+  TCP is used.
 - Planned: remote configuration over OpAMP, continuous profiling, and a config-file handoff for JVMs attached at
   runtime.
 

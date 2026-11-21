@@ -6,7 +6,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const { Status, NAME, VERSION, appSubstitutions, fileText } = require('./status');
-const { settingsFromBlock, endpoint, resourceAttrFromEnv } = require('./settings');
+const { settingsFromBlock, endpoint, socketTarget, resourceAttrFromEnv } = require('./settings');
 
 const KM_SERVICE_ID = 'km.service_id';
 
@@ -14,14 +14,17 @@ const KM_SERVICE_ID = 'km.service_id';
 const appSet = new Set();
 
 function defaults(settings, fileMode) {
+  // Env mode prefers the agent's socket (OTLP/gRPC); a file names its own exporters.
+  const sock = fileMode ? undefined : socketTarget(settings);
   const d = {
     OTEL_TRACES_EXPORTER: 'otlp',
     OTEL_METRICS_EXPORTER: 'otlp',
     OTEL_LOGS_EXPORTER: 'otlp',
-    OTEL_EXPORTER_OTLP_PROTOCOL: 'http/protobuf',
+    OTEL_EXPORTER_OTLP_PROTOCOL: sock ? 'grpc' : 'http/protobuf',
     OTEL_PROPAGATORS: 'tracecontext,baggage',
   };
-  if (!fileMode) d.OTEL_EXPORTER_OTLP_ENDPOINT = endpoint(settings);
+  if (!fileMode) d.OTEL_EXPORTER_OTLP_ENDPOINT = sock || endpoint(settings);
+  if (sock) d.OTEL_EXPORTER_OTLP_INSECURE = 'true'; // no TLS on a local socket
   // Express 5 runs on `router`, which the express instrumentation already traces: router spans would
   // double every middleware. A runtime_metrics profile of off drops the runtime-node instrumentation.
   // Either applies only when the app sets neither instrumentation list.
@@ -163,8 +166,35 @@ function addResourceAttributes(model, attrs) {
   return model;
 }
 
-/** Runs fn while the file config loader hands out models carrying attrs; the loader is restored afterwards. */
-function withFileResourceAttributes(attrs, fn) {
+const SIGNAL_EXPORTERS = {
+  TRACES: (m) => ((m.tracer_provider && m.tracer_provider.processors) || []).map((p) => (p && (p.batch || p.simple)) || {}),
+  METRICS: (m) => ((m.meter_provider && m.meter_provider.readers) || []).map((r) => (r && r.periodic) || {}),
+  LOGS: (m) => ((m.logger_provider && m.logger_provider.processors) || []).map((p) => (p && (p.batch || p.simple)) || {}),
+};
+
+/**
+ * Points every otlp_grpc exporter without an endpoint at the agent's socket (target is unix:///path), without TLS
+ * unless the file configures it. Returns the signals it filled.
+ */
+function fillGrpcSocket(model, target) {
+  const filled = [];
+  for (const [sig, holders] of Object.entries(SIGNAL_EXPORTERS)) {
+    for (const h of holders(model)) {
+      const exp = h.exporter;
+      if (!exp || typeof exp !== 'object' || !('otlp_grpc' in exp)) continue;
+      const g = exp.otlp_grpc && typeof exp.otlp_grpc === 'object' ? exp.otlp_grpc : {};
+      if (g.endpoint) continue;
+      g.endpoint = target;
+      if (!g.tls) g.tls = { insecure: true };
+      exp.otlp_grpc = g;
+      if (!filled.includes(sig)) filled.push(sig);
+    }
+  }
+  return filled;
+}
+
+/** Runs fn while the file config loader hands out models passed through customize; the loader is restored afterwards. */
+function withFileModel(customize, fn) {
   let FileConfigFactory;
   try {
     ({ FileConfigFactory } = require('@opentelemetry/configuration/build/src/FileConfigFactory'));
@@ -175,7 +205,7 @@ function withFileResourceAttributes(attrs, fn) {
   FileConfigFactory.prototype.getConfigModel = function () {
     const model = original.call(this);
     try {
-      return addResourceAttributes(model, attrs);
+      return customize(model);
     } catch {
       return model;
     }
@@ -205,8 +235,12 @@ function startFile(api, file) {
     return null; // upstream would also leave the SDK off
   }
   const settings = settingsFromBlock(model.distribution && model.distribution.kloudmate);
+  const sock = socketTarget(settings); // before the distro sets any OTLP variable
   applyDefaults(defaults(settings, true));
   fileEndpoints(model, settings, st);
+  if (sock) {
+    for (const sig of fillGrpcSocket(model, sock)) st.put(`OTEL_EXPORTER_OTLP_${sig}_ENDPOINT`, sock, 'distro_default');
+  }
   const fileAttrs = (model.resource && model.resource.attributes) || [];
   const fileId = fileAttrs.find((a) => a && a.name === KM_SERVICE_ID);
   st.serviceId = fileId ? String(fileId.value) : settings.serviceId;
@@ -223,8 +257,14 @@ function startFile(api, file) {
   st.write(settings.statusDir);
 
   const before = api.metrics.getMeterProvider();
-  // sdk-node 0.223 builds the resource from the file alone (resourceDetectors is ignored): add ours to the model.
-  const sdk = withFileResourceAttributes(attrs, () => startNodeSDK({ instrumentations }));
+  // sdk-node 0.223 builds the resource from the file alone (resourceDetectors is ignored): add ours to the model,
+  // with the socket fill.
+  const customize = (m) => {
+    addResourceAttributes(m, attrs);
+    if (sock) fillGrpcSocket(m, sock);
+    return m;
+  };
+  const sdk = withFileModel(customize, () => startNodeSDK({ instrumentations }));
   // startNodeSDK (experimental) enables instrumentations before it sets the global MeterProvider, so they keep
   // a no-op meter; NodeSDK hands them the provider explicitly. Do the same.
   const mp = api.metrics.getMeterProvider();
@@ -277,4 +317,4 @@ function start() {
   process.on('SIGTERM', onTerm);
 }
 
-module.exports = { addResourceAttributes, start, defaults, settingsFromBlock };
+module.exports = { addResourceAttributes, fillGrpcSocket, start, defaults, settingsFromBlock };

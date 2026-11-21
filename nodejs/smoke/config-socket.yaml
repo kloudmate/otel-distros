@@ -1,0 +1,26 @@
+# File mode with the agent's socket: the otlp_grpc exporters have no endpoint, so the distribution points them at
+# distribution.kloudmate.agent.otlp_socket (OTLP/gRPC).
+file_format: "1.0"
+resource:
+  attributes:
+    - name: service.name
+      value: smoke-file-socket
+tracer_provider:
+  processors:
+    - batch:
+        schedule_delay: 200
+        exporter:
+          otlp_grpc:
+meter_provider:
+  readers:
+    - periodic:
+        interval: 1000
+        timeout: 500
+        exporter:
+          otlp_grpc:
+distribution:
+  kloudmate:
+    service_id: "systemd:smoke-file-socket.service"
+    agent:
+      otlp_socket: ${SMOKE_SOCKET}
+    status_dir: ${KM_SDK_STATUS_DIR}

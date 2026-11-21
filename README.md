@@ -77,9 +77,10 @@ distribution keeps your values.
 | --- | --- | --- | --- |
 | `KM_SERVICE_ID` | env | unset | Value of `km.service_id`, if the resource doesn't already have one |
 | `KM_SDK_STATUS_DIR` | env | `/run/kmagent/sdk-status` | Where the startup status file is written (only if the directory exists) |
+| `KM_OTLP_SOCKET` | env | unset | The agent's OTLP/gRPC Unix socket; see `agent.otlp_socket` |
 | `distribution.kloudmate.service_id` | config file | unset | Same as `KM_SERVICE_ID`; takes precedence over it |
 | `distribution.kloudmate.agent.otlp_endpoint` | config file | `http://127.0.0.1:4318` | Endpoint used for exporters that don't set their own |
-| `distribution.kloudmate.agent.otlp_socket` | config file | unset | Unix socket of the local agent, used first where the language's exporter supports it |
+| `distribution.kloudmate.agent.otlp_socket` | config file | unset | The agent's OTLP/gRPC Unix socket, used first where the language supports it ([rules](contract/README.md#the-agents-socket)); takes precedence over `KM_OTLP_SOCKET` |
 | `distribution.kloudmate.runtime_metrics.profile` | config file | `standard` | `standard`, `extended` or `off` |
 | `distribution.kloudmate.status_dir` | config file | see `KM_SDK_STATUS_DIR` | Where the startup status file is written |
 

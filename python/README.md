@@ -51,8 +51,8 @@ Each default applies only when you haven't set the variable yourself.
 
 | Variable | Upstream default | KloudMate default |
 | --- | --- | --- |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` (opentelemetry-distro) | `http/protobuf` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | `http://127.0.0.1:4318`, or `distribution.kloudmate.agent.otlp_endpoint` |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` (opentelemetry-distro) | `http/protobuf`; `grpc` over the agent's socket |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | `http://127.0.0.1:4318`, or `distribution.kloudmate.agent.otlp_endpoint`; `unix://<socket>` over the agent's socket ([rules](../contract/README.md#the-agents-socket)) |
 | `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` / `OTEL_LOGS_EXPORTER` | `otlp` | `otlp` |
 | `OTEL_PROPAGATORS` | `tracecontext,baggage` | `tracecontext,baggage` |
 | Logs | handler only with the deprecated SDK switch | stdlib `logging` exported through `opentelemetry-instrumentation-logging` |
@@ -90,7 +90,9 @@ specific to Python:
 
 ## Limitations
 
-- The upstream OTLP/HTTP exporter has no Unix-socket transport, so `agent.otlp_socket` is skipped and TCP is used.
+- The agent's socket speaks OTLP/gRPC, and this distribution ships the OTLP/HTTP exporter only. The socket is used
+  when `opentelemetry-exporter-otlp-proto-grpc` (which needs the native `grpcio` wheel) is installed next to it;
+  otherwise TCP is used.
 - The status lists the instrumentations the distro activated as they load, so it is rewritten a few times at
   startup.
 - Planned: live configuration over OpAMP, and optional continuous profiling.
@@ -103,10 +105,12 @@ smoke/run.sh                                 # end-to-end against a local OTLP s
 release.sh                                   # wheel, sitecustomize.py, km-manifest.json, SHA256SUMS
 ```
 
-The smoke test builds a bundle shaped like the agent's and runs five scenarios:
+The smoke test builds a bundle shaped like the agent's and runs these scenarios:
 
 1. KloudMate defaults;
 2. your own `OTEL_*` settings win;
 3. a config file;
 4. a broken config file (the app still runs);
-5. Python 2.7 (the bootstrap parses, and the status file says `python_too_old`).
+5. Python 2.7 (the bootstrap parses, and the status file says `python_too_old`);
+6. the agent's socket: with the gRPC exporter installed, without it (TCP), and a config file with `otlp_grpc`
+   exporters.

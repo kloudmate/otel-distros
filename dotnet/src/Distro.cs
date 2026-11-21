@@ -84,6 +84,26 @@ namespace KloudMate.OpenTelemetry
         internal string ConfigHash { get; private set; } = string.Empty;
         internal bool FromFile { get; private set; }
         private string? fileText;
+        private string? socketPath;
+        private bool socketChecked;
+
+        /// <summary>Upstream's own file-based configuration is on: the file names the exporters.</summary>
+        internal bool UpstreamFileMode =>
+            ConfigFile != null && string.Equals(Env.Get("OTEL_EXPERIMENTAL_FILE_BASED_CONFIGURATION_ENABLED"), "true", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// The agent's socket path when it is used: a path is configured (agent.otlp_socket, else KM_OTLP_SOCKET), a
+        /// socket there accepts connections, and the app chose no OTLP endpoint or protocol itself. Checked once.
+        /// </summary>
+        internal string? SocketPath()
+        {
+            if (!socketChecked)
+            {
+                socketPath = !AgentSocket.TransportSetByApp() && AgentSocket.Accepts(Socket) ? Socket : null;
+                socketChecked = true;
+            }
+            return socketPath;
+        }
 
         internal static Settings Load()
         {
@@ -91,6 +111,7 @@ namespace KloudMate.OpenTelemetry
             {
                 ServiceId = Env.Get("KM_SERVICE_ID"),
                 StatusDir = Env.Get("KM_SDK_STATUS_DIR") ?? Distro.DefaultStatusDir,
+                Socket = Env.Get("KM_OTLP_SOCKET"),
             };
             try
             {

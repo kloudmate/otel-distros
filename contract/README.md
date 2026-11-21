@@ -28,6 +28,21 @@ Rules:
 - A file that can't be loaded never stops the application. The application runs uninstrumented and the status
   file reports `error` / `config_parse_error`.
 
+### The agent's socket
+
+The KloudMate Agent's socket speaks OTLP/gRPC. Its path comes from `agent.otlp_socket`, else `KM_OTLP_SOCKET`. A
+distribution uses it only when all of these hold:
+
+- the path is absolute and a socket is there (.NET connects once to check);
+- the language can send OTLP/gRPC over a Unix socket (Python only when `opentelemetry-exporter-otlp-proto-grpc`
+  is installed; never Java);
+- the application set no `OTEL_EXPORTER_OTLP_[<SIGNAL>_]ENDPOINT` or `..._PROTOCOL` itself.
+
+Otherwise TCP `otlp_endpoint` is used. Without a config file, every signal moves to the socket
+(`OTEL_EXPORTER_OTLP_PROTOCOL=grpc`, endpoint `unix://<path>`, no TLS). With a config file, only an `otlp_grpc`
+exporter without an `endpoint` gets the socket: the file names the protocol, and the socket doesn't speak
+OTLP/HTTP.
+
 Without a config file, the distribution reads the standard `OTEL_*` environment variables and applies its
 defaults underneath them.
 

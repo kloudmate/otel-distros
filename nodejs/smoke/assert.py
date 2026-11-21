@@ -55,6 +55,23 @@ if st:
 c.check(not any(r.get("service.name") == "smoke-file" for r in c.resources("default", "metrics")),
         "[file] no metrics leaked to the default endpoint")
 
+# 4c-4e. the agent's socket
+sock = "unix://" + os.path.join(work, "otlp.sock")
+c.common("socket", "socket", "smoke-socket", "systemd:smoke-socket.service")
+c.check(all(r["listener"].startswith("grpc+unix:") for r in c.records("socket")), "[socket] every request came over gRPC on the socket")
+st = c.status("socket")
+if st:
+    ec = st["effective_config"]
+    c.check(ec.get("OTEL_EXPORTER_OTLP_ENDPOINT") == {"value": sock, "origin": "distro_default"}, f"[socket] endpoint {ec.get('OTEL_EXPORTER_OTLP_ENDPOINT')}")
+    c.check(ec.get("OTEL_EXPORTER_OTLP_PROTOCOL") == {"value": "grpc", "origin": "distro_default"}, f"[socket] protocol {ec.get('OTEL_EXPORTER_OTLP_PROTOCOL')}")
+c.common("nosocket", "default", "smoke-nosocket", "systemd:smoke-nosocket.service")
+c.check(not any(r.get("service.name") == "smoke-app" for r in c.resources("socket", "traces")), "[appenv] the app's endpoint won over the socket")
+c.common("file-socket", "socket", "smoke-file-socket", "systemd:smoke-file-socket.service")
+st = c.status("file-socket")
+if st:
+    tr = st["effective_config"].get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", {})
+    c.check(tr == {"value": sock, "origin": "distro_default"}, f"[file-socket] traces endpoint {tr}")
+
 # 5. SIGTERM
 res = open(os.path.join(work, "sigterm.result")).read().strip()
 c.check(res in ("exit=143", "exit=0"), f"[sigterm] the app exited on SIGTERM ({res})")

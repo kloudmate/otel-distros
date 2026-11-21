@@ -57,4 +57,15 @@ c.check(st is not None and st["result"] == "ok", f"[file-upstream] the plugin lo
 c.check("app ran" in open(os.path.join(work, "app-noplugin.log")).read(), "[noplugin] the app ran without the plugin")
 c.check(c.status("noplugin") is None, "[noplugin] no status file (the plugin never loaded)")
 
+# 7. the agent's socket
+c.common("socket", "socket", "smoke-socket", "systemd:smoke-socket.service")
+c.check(all(r["listener"].startswith("grpc+unix:") for r in c.records("socket")), "[socket] every request came over gRPC on the socket")
+st = c.status("socket")
+if st:
+    ec = st["effective_config"]
+    c.check(ec.get("OTEL_EXPORTER_OTLP_ENDPOINT") == {"value": "unix:///km/otlp.sock", "origin": "distro_default"}, f"[socket] endpoint {ec.get('OTEL_EXPORTER_OTLP_ENDPOINT')}")
+    c.check(ec.get("OTEL_EXPORTER_OTLP_PROTOCOL") == {"value": "grpc", "origin": "distro_default"}, f"[socket] protocol {ec.get('OTEL_EXPORTER_OTLP_PROTOCOL')}")
+c.common("nosocket", "default", "smoke-nosocket", "systemd:smoke-nosocket.service")
+c.common("file-socket", "socket", "smoke-file-socket", "systemd:smoke-file-socket.service")
+
 c.done()

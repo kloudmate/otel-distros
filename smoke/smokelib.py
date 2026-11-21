@@ -33,15 +33,14 @@ class Checker:
         return json.load(open(files[0])) if files else None
 
     def common(self, name, sink, service_name, service_id, signals=("traces", "metrics")):
-        """Signals reached the sink with the expected identity and this distro's telemetry.distro.*."""
+        """Signals for service_name reached the sink with the expected identity and this distro's telemetry.distro.*.
+        Records are matched by service.name, so several scenarios can share one sink."""
         for sig in signals:
-            res = self.resources(sink, sig)
-            self.check(bool(res), f"[{name}] {sig} reached the {sink} sink")
+            res = [r for r in self.resources(sink, sig) if r.get("service.name") == service_name]
+            self.check(bool(res), f"[{name}] {sig} for service.name={service_name!r} reached the {sink} sink")
             for r in res[:1]:
                 self.check(r.get("km.service_id") == service_id,
                            f"[{name}] {sig} km.service_id={r.get('km.service_id')!r} want {service_id!r}")
-                self.check(r.get("service.name") == service_name,
-                           f"[{name}] {sig} service.name={r.get('service.name')!r} want {service_name!r}")
                 self.check(r.get("telemetry.distro.name") == self.distro,
                            f"[{name}] {sig} telemetry.distro.name={r.get('telemetry.distro.name')!r}")
                 self.check(bool(r.get("telemetry.distro.version")), f"[{name}] {sig} telemetry.distro.version set")
