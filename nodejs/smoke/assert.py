@@ -72,6 +72,9 @@ if st:
     tr = st["effective_config"].get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", {})
     c.check(tr == {"value": sock, "origin": "distro_default"}, f"[file-socket] traces endpoint {tr}")
 
+# 4f. OpAMP
+c.opamp("opamp", "smoke-opamp", "systemd:smoke-opamp.service")
+
 # 5. SIGTERM
 res = open(os.path.join(work, "sigterm.result")).read().strip()
 c.check(res in ("exit=143", "exit=0"), f"[sigterm] the app exited on SIGTERM ({res})")

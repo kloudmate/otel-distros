@@ -26,6 +26,10 @@ cp -r "$ROOT/nodejs/register.js" "$ROOT/nodejs/register.mjs" "$ROOT/nodejs/src" 
 # The KloudMate Agent's socket speaks OTLP/gRPC.
 SOCK="$WORK/otlp.sock"
 "$WORK/otlpsink" -listen "grpc+unix:$SOCK" -out "$WORK/socket.jsonl" 2>"$WORK/sink-socket.log" & PIDS+=($!)
+# A stand-in for the KloudMate Agent's OpAMP server, serving one remote config.
+(cd "$ROOT/smoke/opampsink" && go build -o "$WORK/opampsink" .)
+printf '{"sampling_rate": 0, "logging_level": "debug"}' > "$WORK/remote.json"
+"$WORK/opampsink" -listen 127.0.0.1:4320 -out "$WORK/opamp.jsonl" -remote "$WORK/remote.json" 2>"$WORK/opamp.log" & PIDS+=($!)
 sleep 1
 
 run_app() {
@@ -68,6 +72,10 @@ run_app nosocket "$REQ" "$HERE/app.cjs" KM_SERVICE_ID=systemd:smoke-nosocket.ser
 
 echo ">>> 4e. a config file whose otlp_grpc exporters have no endpoint: the socket"
 run_app file-socket "$REQ" "$HERE/app.cjs" OTEL_CONFIG_FILE="$HERE/config-socket.yaml" SMOKE_SOCKET="$SOCK"
+
+echo ">>> 4f. OpAMP: health and status reported, a remote sampling_rate of 0 applied live"
+run_app opamp "$REQ" "$HERE/app.cjs" KM_SERVICE_ID=systemd:smoke-opamp.service OTEL_SERVICE_NAME=smoke-opamp \
+  KM_OPAMP_ENDPOINT=http://127.0.0.1:4320/v1/opamp KM_OPAMP_POLL_INTERVAL=1 SMOKE_DELAY_MS=2000
 
 echo ">>> 5. SIGTERM still terminates an app without its own handler"
 mkdir -p "$WORK/status-sigterm"

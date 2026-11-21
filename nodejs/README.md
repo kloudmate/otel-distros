@@ -80,7 +80,9 @@ file.
 
 ## Limitations
 
-- Planned: remote configuration over OpAMP, and optional continuous profiling.
+- Over OpAMP ([remote configuration](../contract/README.md#4-remote-configuration)), `sampling_rate` and
+  `send_traces` apply live; the other remote keys are reported as not applied live.
+- Planned: optional continuous profiling.
 
 ## Development
 

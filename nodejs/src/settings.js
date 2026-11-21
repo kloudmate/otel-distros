@@ -19,6 +19,7 @@ function settingsFromBlock(block) {
     serviceId: str(b.service_id) || str(process.env.KM_SERVICE_ID),
     otlpSocket: str(agent.otlp_socket) || str(process.env.KM_OTLP_SOCKET),
     otlpEndpoint: str(agent.otlp_endpoint),
+    opampEndpoint: str(agent.opamp_endpoint) || str(process.env.KM_OPAMP_ENDPOINT),
     runtimeMetricsProfile: profile,
     statusDir: str(b.status_dir) || str(process.env.KM_SDK_STATUS_DIR) || '/run/kmagent/sdk-status',
   };

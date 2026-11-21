@@ -115,6 +115,7 @@ function startEnv(api) {
   const before = api.metrics.getMeterProvider();
   const sdk = new NodeSDK({ instrumentations, resourceDetectors: [...getResourceDetectors(), kmDetector(attrs)] });
   sdk.start();
+  startOpamp(api, settings, st);
   releaseMeterProvider(api, before);
   return () => sdk.shutdown();
 }
@@ -277,8 +278,23 @@ function startFile(api, file) {
       }
     }
   }
+  startOpamp(api, settings, st);
   releaseMeterProvider(api, before);
   return () => sdk.shutdown();
+}
+
+/** The OpAMP client, when an endpoint is configured (specification §4). */
+function startOpamp(api, settings, st) {
+  if (!settings.opampEndpoint) return;
+  try {
+    let provider = api.trace.getTracerProvider();
+    if (provider && typeof provider.getDelegate === 'function') provider = provider.getDelegate();
+    const attrs = (provider && provider._resource && provider._resource.attributes) || {};
+    const serviceName = String(attrs['service.name'] || process.env.OTEL_SERVICE_NAME || 'unknown_service:node');
+    require('./opamp').start({ endpoint: settings.opampEndpoint, status: st, statusDir: settings.statusDir, serviceName });
+  } catch {
+    // OpAMP stays off; telemetry is unaffected
+  }
 }
 
 function start() {
