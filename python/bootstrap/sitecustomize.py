@@ -76,9 +76,13 @@ def _main():
         _status("unsupported_runtime", "python_implementation:" + sys.implementation.name)
         return
     base = os.path.dirname(os.path.abspath(__file__))
-    cell = os.path.join(base, "%d.%d" % sys.version_info[:2])
+    # One cell per minor; a musl interpreter takes the <minor>-musl cell, as native wheels differ by libc.
+    name = "%d.%d" % sys.version_info[:2]
+    if "musl" in (getattr(sys.implementation, "_multiarch", "") or ""):
+        name += "-musl"
+    cell = os.path.join(base, name)
     if not os.path.isdir(cell):
-        _status("unsupported_runtime", "no_bundle_for_python_%d.%d" % sys.version_info[:2])
+        _status("unsupported_runtime", "no_bundle_for_python_" + name)
         return
     if cell not in sys.path:
         sys.path.insert(0, cell)

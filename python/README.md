@@ -82,7 +82,7 @@ specific to Python:
 | `result` | `reason` | When |
 | --- | --- | --- |
 | `unsupported_runtime` | `python_too_old` | CPython older than 3.10 |
-| `unsupported_runtime` | `no_bundle_for_python_X.Y` | no package directory for this minor |
+| `unsupported_runtime` | `no_bundle_for_python_X.Y`, `no_bundle_for_python_X.Y-musl` | no package directory for this minor and libc |
 | `unsupported_runtime` | `python_implementation:<name>` | PyPy and others |
 | `disabled` | `sdk_disabled` | `OTEL_SDK_DISABLED=true` |
 | `degraded` | `foreign_agent:<vendor>` | `ddtrace`, `newrelic`, `elasticapm` already loaded |

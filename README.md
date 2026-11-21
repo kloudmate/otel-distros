@@ -150,6 +150,9 @@ To release a language:
 It builds with the language's `release.sh`, checks the manifest and the checksums, and publishes the GitHub
 release. Once the repository is public, it also attaches build provenance.
 
+Kubernetes images (`ghcr.io/kloudmate/otel-distro-<language>`) are built from the same release by the **images**
+workflow, which tests each image and pushes it only when asked. See [images/](images/).
+
 ## Building and testing
 
 | Language | Build | Test | Requires |
@@ -159,12 +162,15 @@ release. Once the repository is public, it also attaches build provenance.
 | Node.js | `nodejs/release.sh` | `npm test` and `nodejs/smoke/run.sh` | Node.js 18.19+ with npm, Go (smoke sink); Docker optional |
 | .NET | `dotnet/release.sh` | `dotnet/smoke/run.sh` | Docker (the .NET SDK runs in a container), Go (smoke sink) |
 
-The smoke tests run a sample app against [`smoke/otlpsink`](smoke/otlpsink), a small local OTLP/HTTP receiver. They
-check three things:
+The smoke tests run a sample app against [`smoke/otlpsink`](smoke/otlpsink), a small local OTLP receiver (HTTP, and
+gRPC on a Unix socket like the agent's). They check:
 
 - the KloudMate defaults and resource attributes;
 - that the app's own OpenTelemetry settings still win;
-- that the config file is read.
+- that the config file is read;
+- export over the agent's socket, where the language supports it.
+
+`images/test.sh <language>` runs the same app from each Kubernetes image.
 
 ## Contributing
 
