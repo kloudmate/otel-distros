@@ -2,7 +2,7 @@
   "schema_version": 1,
   "distro": {
     "name": "kloudmate-java",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "upstream": { "component": "opentelemetry-javaagent", "version": "2.29.0" }
   },
   "runtime": { "name": "java", "version_range": ">=8" },
@@ -12,7 +12,7 @@
   ],
   "deny": {
     "exe": ["**/jdk*/bin/javac", "**/jshell", "**/bin/jcmd", "**/bin/jps", "**/bin/keytool"],
-    "cmdline": ["* -version", "*org.gradle.launcher.daemon*", "*org.gradle.wrapper.GradleWrapperMain*", "*org.codehaus.plexus.classworlds.launcher.Launcher*", "*sbt-launch*"],
+    "cmdline": ["* -version", "*org.gradle.launcher.daemon*", "*org.gradle.wrapper.GradleWrapperMain*", "*org.codehaus.plexus.classworlds.launcher.Launcher*", "*sbt-launch*", "* -Xverify:none*", "* -noverify*", "* -XX:-BytecodeVerificationRemote*"],
     "env_present": ["DD_TRACE_ENABLED", "NEW_RELIC_LICENSE_KEY", "ELASTIC_APM_SERVER_URL"]
   },
   "entry": {

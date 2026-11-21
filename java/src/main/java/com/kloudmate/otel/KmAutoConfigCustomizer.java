@@ -16,6 +16,7 @@ import java.util.Map;
  * startup status. Every step is guarded: on failure the agent runs with upstream defaults.
  */
 public final class KmAutoConfigCustomizer implements AutoConfigurationCustomizerProvider {
+  static final String DEFAULT_ENABLED = "otel.instrumentation.common.default-enabled";
 
   /** KloudMate defaults over upstream 2.29.0 (README "What it adds"). */
   static Map<String, String> defaults(KmSettings s) {
@@ -38,6 +39,11 @@ public final class KmAutoConfigCustomizer implements AutoConfigurationCustomizer
     try {
       settings = KmSettings.fromEnv();
       defaults = defaults(settings);
+      if (KmStartupCheck.bytecodeVerificationOff()) {
+        // No instrumentation by default in a JVM that never verifies the classes the agent rewrites. Lowest
+        // priority like every default here: an app that sets it to true itself keeps its instrumentation.
+        defaults.put(DEFAULT_ENABLED, "false");
+      }
     } catch (Throwable t) {
       KmDistro.warn("disabled, running with upstream defaults", t);
       return;
@@ -56,7 +62,7 @@ public final class KmAutoConfigCustomizer implements AutoConfigurationCustomizer
                 st.put(KmDistro.envName(k), config.getString(k), "app_env");
               }
             }
-            KmStartupCheck.run(st, config.getBoolean("otel.sdk.disabled", false));
+            KmStartupCheck.run(st, config.getBoolean("otel.sdk.disabled", false), config.getBoolean(DEFAULT_ENABLED, true));
             st.write(settings.statusDir);
           } catch (Throwable t) {
             KmDistro.warn("status not reported", t);

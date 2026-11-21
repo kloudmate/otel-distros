@@ -54,7 +54,7 @@ public final class KmDeclarativeConfigCustomizer implements DeclarativeConfigura
       fillEndpoints(model, s.endpoint(), st);
       runtimeMetrics(model, s.runtimeMetricsProfile, st);
 
-      KmStartupCheck.run(st, Boolean.TRUE.equals(model.getDisabled()));
+      KmStartupCheck.run(st, Boolean.TRUE.equals(model.getDisabled()), KmVerifierGuard.instrumentationOnByDefault(model));
       st.write(s.statusDir);
     } catch (Throwable t) {
       KmDistro.warn("declarative config not customized, running with the file as written", t);

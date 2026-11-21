@@ -9,7 +9,7 @@ startup health check.
 | Built on | `opentelemetry-javaagent` 2.29.0 (SDK 1.63.0) |
 | Runtime | Java 8 and later, any JVM vendor |
 | Platforms | Linux x86-64, arm64 |
-| Status | Preview (0.1.0) |
+| Status | Preview (0.1.1) |
 
 Each release is tested against one agent version, recorded in its `km-manifest.json`. Use it with that version.
 
@@ -65,6 +65,23 @@ specific to Java:
 | --- | --- | --- |
 | `disabled` | `sdk_disabled` | `otel.sdk.disabled=true`, or `disabled: true` in the file |
 | `degraded` | `foreign_agent:<vendor>` | another vendor's `-javaagent` on the command line (Datadog, New Relic, Elastic, AppDynamics, Dynatrace, SkyWalking, Pinpoint) |
+| `denied` | `bytecode_verification_off` | the JVM runs without bytecode verification (`-Xverify:none`, `-noverify` or `-XX:-BytecodeVerificationRemote`, from the command line, `JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS` or `_JAVA_OPTIONS`); instrumentation is off |
+| `degraded` | `bytecode_verification_off` | the same, but the app turned instrumentation on itself |
+
+## JVMs without bytecode verification
+
+With verification off, the JVM never checks the classes the agent rewrites. A rewrite it would normally reject
+with a `VerifyError` reaches the JIT compiler instead, and can crash the whole JVM (for example
+`guarantee(_stack_height < _max_stack) failed: stack overflow` in the bytecode escape analyzer). So in such a JVM
+the distribution turns all instrumentation off by default: `otel.instrumentation.common.default-enabled=false`,
+or `distribution.javaagent.instrumentation.default_enabled: false` under a config file. The SDK still starts and
+reports its status.
+
+- The KloudMate Agent doesn't load the distribution into these JVMs at all: the manifest's deny list holds the
+  same flags.
+- To instrument such a JVM anyway, set `OTEL_INSTRUMENTATION_COMMON_DEFAULT_ENABLED=true` (or
+  `-Dotel.instrumentation.common.default-enabled=true`, or `default_enabled: true` in the file). Removing
+  `-Xverify:none` is the better fix: it has been deprecated since Java 13.
 
 The check reads `/proc/self/cmdline` and never touches JMX or `java.util.logging` during agent startup. Both
 break applications that install their own `LogManager`, such as JBoss and WildFly. Any failure in the extension

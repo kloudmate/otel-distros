@@ -30,15 +30,18 @@ javac -d "$WORK/app" "$HERE/App.java"
 "$WORK/otlpsink" -listen 127.0.0.1:4318 -out "$WORK/default.jsonl" 2>"$WORK/sink-default.log" & PIDS+=($!)
 "$WORK/otlpsink" -listen 127.0.0.1:14318 -out "$WORK/app.jsonl" 2>"$WORK/sink-app.log" & PIDS+=($!)
 "$WORK/otlpsink" -listen 127.0.0.1:24318 -out "$WORK/file.jsonl" 2>"$WORK/sink-file.log" & PIDS+=($!)
+"$WORK/otlpsink" -listen 127.0.0.1:34318 -out "$WORK/noverify.jsonl" 2>"$WORK/sink-noverify.log" & PIDS+=($!)
 sleep 1
 
-# Only the variables a scenario sets: the caller's OTEL_* and JAVA_TOOL_OPTIONS never leak in.
+# Only the variables a scenario sets: the caller's OTEL_* and JAVA_TOOL_OPTIONS never leak in. JVM_FLAGS holds
+# extra JVM options for one scenario.
+JVM_FLAGS=()
 run_app() {
   local name="$1"; shift
   mkdir -p "$WORK/status-$name"
   env -i PATH="$PATH" HOME="$HOME" KM_SDK_STATUS_DIR="$WORK/status-$name" \
     OTEL_METRIC_EXPORT_INTERVAL=1000 OTEL_BSP_SCHEDULE_DELAY=200 "$@" \
-    java -javaagent:"$agent" -Dotel.javaagent.extensions="$ext" -cp "$WORK/app" App \
+    java "${JVM_FLAGS[@]}" -javaagent:"$agent" -Dotel.javaagent.extensions="$ext" -cp "$WORK/app" App \
     >"$WORK/app-$name.log" 2>&1 || { cat "$WORK/app-$name.log"; exit 1; }
 }
 
@@ -54,6 +57,22 @@ run_app appenv KM_SERVICE_ID=systemd:smoke.service OTEL_SERVICE_NAME=smoke-app \
 echo ">>> 3. declarative config file with distribution.kloudmate"
 run_app file OTEL_CONFIG_FILE="$HERE/config.yaml" SMOKE_FILE_PORT=24318 KM_SERVICE_ID=ignored-by-block \
   SMOKE_TARGET=http://127.0.0.1:24318/health
+
+echo ">>> 4. a JVM without bytecode verification: no instrumentation, status denied"
+NV=(OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:34318 SMOKE_TARGET=http://127.0.0.1:34318/health)
+JVM_FLAGS=(-Xverify:none)
+run_app noverify KM_SERVICE_ID=systemd:noverify.service OTEL_SERVICE_NAME=smoke-noverify "${NV[@]}"
+
+echo ">>> 5. ... unless the app turns instrumentation on itself (verification off through JAVA_TOOL_OPTIONS)"
+JVM_FLAGS=()
+run_app noverify-forced KM_SERVICE_ID=systemd:noverify.service OTEL_SERVICE_NAME=smoke-noverify-forced "${NV[@]}" \
+  JAVA_TOOL_OPTIONS=-Xverify:none OTEL_INSTRUMENTATION_COMMON_DEFAULT_ENABLED=true
+
+echo ">>> 6. a config file in a JVM without bytecode verification"
+JVM_FLAGS=(-noverify)
+run_app noverify-file OTEL_CONFIG_FILE="$HERE/config.yaml" SMOKE_FILE_PORT=34318 OTEL_SERVICE_NAME=smoke-noverify-file \
+  SMOKE_TARGET=http://127.0.0.1:34318/health
+JVM_FLAGS=()
 
 sleep 1
 python3 "$HERE/assert.py" "$WORK"

@@ -21,6 +21,7 @@ final class KmStatus {
   static final String OK = "ok";
   static final String DEGRADED = "degraded";
   static final String DISABLED = "disabled";
+  static final String DENIED = "denied";
   static final String ERROR = "error";
 
   String serviceId;
@@ -46,6 +47,9 @@ final class KmStatus {
 
   private static int rank(String r) {
     if (ERROR.equals(r)) {
+      return 4;
+    }
+    if (DENIED.equals(r)) {
       return 3;
     }
     if (DISABLED.equals(r)) {

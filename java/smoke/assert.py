@@ -39,4 +39,31 @@ if st:
     c.check(st["config_hash"].startswith("sha256:"), "[file] status config_hash")
     c.check(st["km.service_id"] == "systemd:smoke-file.service", "[file] status km.service_id from the block")
 
+# 4-6. a JVM without bytecode verification
+def spans_of(service):
+    return [r for r in c.resources("noverify", "traces") if r.get("service.name") == service]
+
+
+st = c.status("noverify")
+c.check(st is not None, "[noverify] status file written")
+if st:
+    c.check(st["result"] == "denied" and st["reason"] == "bytecode_verification_off",
+            f"[noverify] status {st['result']!r}/{st['reason']!r}")
+    de = st["effective_config"].get("OTEL_INSTRUMENTATION_COMMON_DEFAULT_ENABLED", {})
+    c.check(de == {"value": "false", "origin": "distro_default"}, f"[noverify] instrumentation off by default {de}")
+c.check(not spans_of("smoke-noverify"), "[noverify] no spans: the agent rewrote nothing")
+
+st = c.status("noverify-forced")
+if st:
+    c.check(st["result"] == "degraded" and st["reason"] == "bytecode_verification_off",
+            f"[noverify-forced] status {st['result']!r}/{st['reason']!r}")
+c.check(bool(spans_of("smoke-noverify-forced")), "[noverify-forced] the app's own setting keeps instrumentation on")
+
+st = c.status("noverify-file")
+c.check(st is not None, "[noverify-file] status file written")
+if st:
+    c.check(st["result"] == "denied" and st["reason"] == "bytecode_verification_off",
+            f"[noverify-file] status {st['result']!r}/{st['reason']!r}")
+c.check(not spans_of("smoke-noverify-file"), "[noverify-file] no spans under a config file either")
+
 c.done()
