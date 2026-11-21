@@ -102,6 +102,12 @@ At startup, before the SDK starts, each distribution writes `<status_dir>/<pid>.
 }
 ```
 
+- `overridden_by_app` lists, sorted, the KloudMate-managed settings the application replaced with its own value:
+  a KloudMate default it set itself (environment mode), or a `${OTEL_*}` substitution in the config file whose
+  variable it sets (file mode). Each of them also appears in `effective_config` with origin `app_env`.
+- `instrumentations` lists the instrumentations the distribution activated, where the language can tell. A
+  distribution may rewrite the file as they load.
+
 | `result` | Meaning |
 | --- | --- |
 | `ok` | running as configured |

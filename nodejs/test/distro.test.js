@@ -53,3 +53,17 @@ test('status: worst result wins, only into an existing dir', () => {
   const doc = JSON.parse(fs.readFileSync(st.write(dir), 'utf8'));
   assert.deepStrictEqual([doc.result, doc.reason, doc.distro.name], ['degraded', 'foreign_agent:ddtrace', 'kloudmate-nodejs']);
 });
+
+test('status: overridden_by_app from file substitutions, sorted', () => {
+  const { appSubstitutions } = require('../src/status');
+  const text = 'value: ${OTEL_SERVICE_NAME:-orders}\nx: ${env:OTEL_EXPORTER_OTLP_ENDPOINT:-http://127.0.0.1:4318}\n' +
+    'y: ${OTEL_TRACES_SAMPLER_ARG:-1.0}\nz: ${OTEL_CONFIG_FILE}\nw: ${OTEL_SERVICE_NAME}\n';
+  const env = { OTEL_SERVICE_NAME: 'checkout', OTEL_EXPORTER_OTLP_ENDPOINT: ' ', OTEL_CONFIG_FILE: '/x' };
+  assert.deepStrictEqual(appSubstitutions(text, env), ['OTEL_SERVICE_NAME']);
+  assert.deepStrictEqual(appSubstitutions(null, env), []);
+  const st = new Status();
+  st.overridden('OTEL_SERVICE_NAME');
+  st.overridden('OTEL_EXPORTER_OTLP_ENDPOINT');
+  st.overridden('OTEL_SERVICE_NAME');
+  assert.deepStrictEqual(st.toJSON().overridden_by_app, ['OTEL_EXPORTER_OTLP_ENDPOINT', 'OTEL_SERVICE_NAME']);
+});

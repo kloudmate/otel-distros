@@ -53,6 +53,10 @@ echo ">>> 3. declarative config file with distribution.kloudmate"
 run_app file OTEL_CONFIG_FILE="$HERE/config.yaml" SMOKE_FILE_PORT=24318 KM_SERVICE_ID=ignored-by-block \
   SMOKE_TARGET=http://127.0.0.1:24318/health
 
+echo ">>> 3b. a config file whose \${OTEL_SERVICE_NAME} the app supplies"
+run_app file-app OTEL_CONFIG_FILE="$HERE/config.yaml" SMOKE_FILE_PORT=24318 OTEL_SERVICE_NAME=smoke-file-app \
+  SMOKE_TARGET=http://127.0.0.1:24318/health
+
 echo ">>> 4. broken config file: the app still runs"
 printf 'file_format: "1.0"\ntracer_provider: [not, a, map]\n' > "$WORK/broken.yaml"
 run_app broken OTEL_CONFIG_FILE="$WORK/broken.yaml" SMOKE_SLEEP_S=0

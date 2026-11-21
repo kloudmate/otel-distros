@@ -91,7 +91,8 @@ specific to Python:
 ## Limitations
 
 - The upstream OTLP/HTTP exporter has no Unix-socket transport, so `agent.otlp_socket` is skipped and TCP is used.
-- `overridden_by_app` is always empty in this release, and the status doesn't list instrumentations yet.
+- The status lists the instrumentations the distro activated as they load, so it is rewritten a few times at
+  startup.
 - Planned: live configuration over OpAMP, and optional continuous profiling.
 
 ## Development

@@ -13,7 +13,7 @@ from opentelemetry.sdk._configuration import _OTelSDKConfigurator
 from . import DISTRO_NAME, __version__
 from . import distro as _distro
 from ._settings import Settings
-from ._status import Status, file_hash
+from ._status import Status, app_substitutions, file_hash, file_text, remember
 
 _logger = logging.getLogger(__name__)
 
@@ -42,7 +42,10 @@ def read_block(path: str) -> Mapping[str, Any] | None:
 def _env_status(settings: Settings) -> Status:
     st = Status()
     for k, v in _distro.DEFAULTS.items():
-        st.put(k, os.environ.get(k, v), "app_env" if k in _distro.APP_SET else "distro_default")
+        app = k in _distro.APP_SET
+        st.put(k, os.environ.get(k, v), "app_env" if app else "distro_default")
+        if app:
+            st.overridden(k)
     for k in ("OTEL_SERVICE_NAME", "OTEL_TRACES_SAMPLER", "OTEL_TRACES_SAMPLER_ARG"):
         if os.environ.get(k):
             st.put(k, os.environ[k], "app_env")
@@ -140,6 +143,7 @@ class KloudMateConfigurator(_OTelSDKConfigurator):
         st.service_id = _resource_attr_from_env(KM_SERVICE_ID) or settings.service_id
         st.check_foreign_agents()
         st.write(settings.status_dir)
+        remember(st, settings.status_dir)
         attrs = dict(kwargs.pop("resource_attributes", None) or {})
         attrs.update(stamp_attributes(settings.service_id))
         _initialize_components(resource_attributes=attrs, **kwargs)
@@ -151,6 +155,10 @@ class KloudMateConfigurator(_OTelSDKConfigurator):
         st = Status()
         st.config_hash = file_hash(path)
         st.put("OTEL_CONFIG_FILE", path, "app_env")
+        distro_set = set(_distro.DEFAULTS) - _distro.APP_SET
+        for name in app_substitutions(file_text(path), os.environ, distro_set):
+            st.put(name, os.environ[name], "app_env")
+            st.overridden(name)
         try:
             config = load_config_file(path)
         except Exception as exc:
@@ -161,4 +169,5 @@ class KloudMateConfigurator(_OTelSDKConfigurator):
         complete_model(config, settings, st)
         st.check_foreign_agents()
         st.write(settings.status_dir)
+        remember(st, settings.status_dir)
         configure_sdk(config)

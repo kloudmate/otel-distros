@@ -40,8 +40,10 @@ namespace KloudMate.OpenTelemetry
         {
             var ep = Env.Get("OTEL_EXPORTER_OTLP_ENDPOINT");
             st.Put("OTEL_EXPORTER_OTLP_ENDPOINT", ep ?? s.Endpoint, ep != null ? "app_env" : "distro_default");
+            if (ep != null) st.Overridden("OTEL_EXPORTER_OTLP_ENDPOINT");
             var proto = Env.Get("OTEL_EXPORTER_OTLP_PROTOCOL");
             st.Put("OTEL_EXPORTER_OTLP_PROTOCOL", proto ?? "http/protobuf", proto != null ? "app_env" : "distro_default");
+            if (proto != null) st.Overridden("OTEL_EXPORTER_OTLP_PROTOCOL");
         }
     }
 }

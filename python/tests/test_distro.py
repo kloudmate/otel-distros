@@ -87,3 +87,33 @@ def test_status_written_only_to_existing_dir(tmp_path):
     doc = json.load(open(path))
     assert (doc["result"], doc["reason"]) == ("degraded", "foreign_agent:ddtrace")
     assert doc["distro"]["name"] == "kloudmate-python"
+
+
+def test_app_substitutions():
+    from kloudmate_otel._status import app_substitutions
+
+    text = ("value: ${OTEL_SERVICE_NAME:-orders}\nx: ${env:OTEL_EXPORTER_OTLP_ENDPOINT:-http://127.0.0.1:4318}\n"
+            "y: ${OTEL_TRACES_SAMPLER_ARG:-1.0}\nz: ${OTEL_CONFIG_FILE}\nw: ${OTEL_PROPAGATORS:-tracecontext}\n")
+    env = {"OTEL_SERVICE_NAME": "checkout", "OTEL_EXPORTER_OTLP_ENDPOINT": " ", "OTEL_CONFIG_FILE": "/x",
+           "OTEL_PROPAGATORS": "tracecontext,baggage"}
+    # OTEL_PROPAGATORS was put there by the distro, not the app
+    assert app_substitutions(text, env, {"OTEL_PROPAGATORS"}) == ["OTEL_SERVICE_NAME"]
+    assert app_substitutions(None, env) == []
+
+
+def test_status_overridden_sorted_and_instrumentations(tmp_path):
+    from kloudmate_otel import _status
+
+    st = Status()
+    st.overridden("OTEL_SERVICE_NAME")
+    st.overridden("OTEL_EXPORTER_OTLP_ENDPOINT")
+    st.overridden("OTEL_SERVICE_NAME")
+    assert st.overridden_by_app == ["OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_SERVICE_NAME"]
+    _status.remember(st, str(tmp_path))
+    _status.record_instrumentation("flask")
+    _status.record_instrumentation("flask")
+    _status.record_instrumentation("requests")
+    data = json.loads((tmp_path / ("%d.json" % os.getpid())).read_text())
+    assert data["instrumentations"] == ["flask", "requests"]
+    assert data["overridden_by_app"] == ["OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_SERVICE_NAME"]
+    _status.CURRENT.clear()

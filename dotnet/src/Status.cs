@@ -16,6 +16,7 @@ namespace KloudMate.OpenTelemetry
         };
 
         private readonly List<KeyValuePair<string, string[]>> effective = new List<KeyValuePair<string, string[]>>();
+        private readonly List<string> overriddenByApp = new List<string>();
 
         internal string? ServiceId { get; set; }
         internal string Result { get; private set; } = "ok";
@@ -25,6 +26,18 @@ namespace KloudMate.OpenTelemetry
         {
             if (value != null) effective.Add(new KeyValuePair<string, string[]>(key, new[] { value, origin }));
         }
+
+        /// <summary>A KloudMate-managed setting the app replaced with its own value (sorted, no duplicates).</summary>
+        internal void Overridden(string key)
+        {
+            if (!overriddenByApp.Contains(key))
+            {
+                overriddenByApp.Add(key);
+                overriddenByApp.Sort(StringComparer.Ordinal);
+            }
+        }
+
+        internal IReadOnlyList<string> OverriddenByApp => overriddenByApp;
 
         internal void Fail(string result, string reason)
         {
@@ -73,7 +86,13 @@ namespace KloudMate.OpenTelemetry
                 b.Append(Q(effective[i].Key)).Append(":{\"value\":").Append(Q(effective[i].Value[0]))
                  .Append(",\"origin\":").Append(Q(effective[i].Value[1])).Append('}');
             }
-            b.Append("},\"overridden_by_app\":[],\"instrumentations\":[]");
+            b.Append("},\"overridden_by_app\":[");
+            for (var i = 0; i < overriddenByApp.Count; i++)
+            {
+                if (i > 0) b.Append(',');
+                b.Append(Q(overriddenByApp[i]));
+            }
+            b.Append("],\"instrumentations\":[]");
             b.Append(",\"runtime\":{\"name\":\"dotnet\",\"version\":").Append(Q(Environment.Version.ToString())).Append("}}\n");
             return b.ToString();
         }

@@ -20,6 +20,7 @@ if st:
     c.check(st["km.service_id"] == "systemd:smoke.service", "[defaults] status km.service_id")
     ep = st["effective_config"].get("OTEL_EXPORTER_OTLP_ENDPOINT", {})
     c.check(ep == {"value": "http://127.0.0.1:4318", "origin": "distro_default"}, f"[defaults] endpoint effective config {ep}")
+    c.check(st["overridden_by_app"] == [], f"[defaults] overridden_by_app {st['overridden_by_app']}")
 
 # 2. the app's own env wins
 c.common("appenv", "app", "smoke-app", "app-own")
@@ -29,6 +30,7 @@ st = c.status("appenv")
 if st:
     ep = st["effective_config"].get("OTEL_EXPORTER_OTLP_ENDPOINT", {})
     c.check(ep == {"value": "http://127.0.0.1:14318", "origin": "app_env"}, f"[appenv] endpoint effective config {ep}")
+    c.check(st["overridden_by_app"] == ["OTEL_EXPORTER_OTLP_ENDPOINT"], f"[appenv] overridden_by_app {st['overridden_by_app']}")
 
 # 3. foreign agent
 st = c.status("foreign")

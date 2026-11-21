@@ -34,6 +34,10 @@ public final class KmDeclarativeConfigCustomizer implements DeclarativeConfigura
       KmStatus st = new KmStatus();
       st.configHash = KmStartupCheck.hash(configFile());
       st.put("OTEL_CONFIG_FILE", configFile(), "app_env");
+      for (String name : KmStatus.appSubstitutions(KmStartupCheck.text(configFile()), System.getenv())) {
+        st.put(name, KmDistro.env(name), "app_env");
+        st.overridden(name);
+      }
 
       ResourceModel res = model.getResource();
       if (res == null) {

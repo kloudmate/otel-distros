@@ -5,7 +5,7 @@
 
 const fs = require('fs');
 const crypto = require('crypto');
-const { Status, NAME, VERSION } = require('./status');
+const { Status, NAME, VERSION, appSubstitutions, fileText } = require('./status');
 const { settingsFromBlock, endpoint, resourceAttrFromEnv } = require('./settings');
 
 const KM_SERVICE_ID = 'km.service_id';
@@ -85,7 +85,10 @@ function startEnv(api) {
   applyDefaults(d);
 
   const st = new Status();
-  for (const k of Object.keys(d)) st.put(k, process.env[k], appSet.has(k) ? 'app_env' : 'distro_default');
+  for (const k of Object.keys(d)) {
+    st.put(k, process.env[k], appSet.has(k) ? 'app_env' : 'distro_default');
+    if (appSet.has(k)) st.overridden(k);
+  }
   for (const k of ['OTEL_SERVICE_NAME', 'OTEL_TRACES_SAMPLER', 'OTEL_TRACES_SAMPLER_ARG']) {
     if (process.env[k]) st.put(k, process.env[k], 'app_env');
   }
@@ -149,6 +152,11 @@ function startFile(api, file) {
   const st = new Status();
   st.configHash = fileHash(file);
   st.put('OTEL_CONFIG_FILE', file, 'app_env');
+  // Before the distro sets anything: every OTEL_* in the environment now is the app's.
+  for (const name of appSubstitutions(fileText(file), process.env)) {
+    st.put(name, process.env[name], 'app_env');
+    st.overridden(name);
+  }
   let model;
   try {
     model = require('@opentelemetry/configuration').createConfigFactory().getConfigModel();

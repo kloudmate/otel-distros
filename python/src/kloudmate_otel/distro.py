@@ -35,6 +35,14 @@ def defaults(settings: Settings, file_mode: bool) -> dict[str, str]:
 class KloudMateDistro(BaseDistro):
     """Selected with OTEL_PYTHON_DISTRO=kloudmate (the bootstrap sets it unless the app chose another)."""
 
+    def load_instrumentor(self, entry_point, **kwargs):
+        # Upstream calls this for each instrumentation it activates (installed library, no dependency conflict,
+        # not disabled), after the configurator has written the status: list it there.
+        super().load_instrumentor(entry_point, **kwargs)
+        from ._status import record_instrumentation
+
+        record_instrumentation(getattr(entry_point, "name", ""))
+
     def _configure(self, **kwargs) -> None:
         try:
             file_mode = bool(os.environ.get("OTEL_CONFIG_FILE"))

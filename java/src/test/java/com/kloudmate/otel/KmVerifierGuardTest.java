@@ -81,6 +81,26 @@ class KmVerifierGuardTest {
     assertEquals("error", denied.result);
   }
 
+  @Test
+  void overriddenByAppFromFileSubstitutions() {
+    Map<String, String> env = new java.util.HashMap<String, String>();
+    env.put("OTEL_SERVICE_NAME", "checkout");
+    env.put("OTEL_EXPORTER_OTLP_ENDPOINT", "  ");
+    env.put("OTEL_CONFIG_FILE", "/etc/x.yaml");
+    String file = "resource:\n  attributes:\n    - name: service.name\n      value: ${OTEL_SERVICE_NAME:-orders}\n"
+        + "x: ${env:OTEL_EXPORTER_OTLP_ENDPOINT:-http://127.0.0.1:4318}\ny: ${OTEL_TRACES_SAMPLER_ARG:-1.0}\n"
+        + "z: ${OTEL_CONFIG_FILE}\nw: ${OTEL_SERVICE_NAME}\n";
+    assertEquals(Arrays.asList("OTEL_SERVICE_NAME"), KmStatus.appSubstitutions(file, env));
+    assertTrue(KmStatus.appSubstitutions(null, env).isEmpty());
+
+    KmStatus st = new KmStatus();
+    st.overridden("OTEL_SERVICE_NAME");
+    st.overridden("OTEL_EXPORTER_OTLP_ENDPOINT");
+    st.overridden("OTEL_SERVICE_NAME");
+    assertEquals(Arrays.asList("OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_SERVICE_NAME"), st.overriddenByApp);
+    assertTrue(st.toJson(1).contains("\"overridden_by_app\":[\"OTEL_EXPORTER_OTLP_ENDPOINT\",\"OTEL_SERVICE_NAME\"]"));
+  }
+
   private static OpenTelemetryConfigurationModel model(Boolean defaultEnabled) {
     Map<String, Object> instrumentation = new LinkedHashMap<String, Object>();
     if (defaultEnabled != null) {

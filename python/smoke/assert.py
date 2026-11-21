@@ -21,6 +21,9 @@ if st:
     c.check(st["km.service_id"] == "systemd:smoke.service", "[defaults] status km.service_id")
     ep = st["effective_config"].get("OTEL_EXPORTER_OTLP_ENDPOINT", {})
     c.check(ep == {"value": "http://127.0.0.1:4318", "origin": "distro_default"}, f"[defaults] endpoint effective config {ep}")
+    c.check(st["overridden_by_app"] == [], f"[defaults] overridden_by_app {st['overridden_by_app']}")
+    c.check("urllib" in st["instrumentations"] and "system_metrics" in st["instrumentations"],
+            f"[defaults] instrumentations listed: {st['instrumentations']}")
     pr = st["effective_config"].get("OTEL_EXPORTER_OTLP_PROTOCOL", {})
     c.check(pr == {"value": "http/protobuf", "origin": "distro_default"}, f"[defaults] protocol effective config {pr}")
 
@@ -33,6 +36,7 @@ if st:
     ep = st["effective_config"].get("OTEL_EXPORTER_OTLP_ENDPOINT", {})
     c.check(ep == {"value": "http://127.0.0.1:14318", "origin": "app_env"}, f"[appenv] endpoint effective config {ep}")
     c.check(st["km.service_id"] == "app-own", "[appenv] status km.service_id is the app's")
+    c.check(st["overridden_by_app"] == ["OTEL_EXPORTER_OTLP_ENDPOINT"], f"[appenv] overridden_by_app {st['overridden_by_app']}")
 
 # 3. declarative config file
 c.common("file", "file", "smoke-file", "systemd:smoke-file.service", SIGNALS)
@@ -42,6 +46,13 @@ if st:
     c.check(st["result"] == "ok", f"[file] status result={st['result']!r} reason={st['reason']!r}")
     c.check(st["config_hash"].startswith("sha256:"), "[file] status config_hash")
     c.check(st["km.service_id"] == "systemd:smoke-file.service", "[file] status km.service_id from the block")
+    c.check(st["overridden_by_app"] == [], f"[file] overridden_by_app {st['overridden_by_app']}")
+    c.check("urllib" in st["instrumentations"], f"[file] instrumentations listed: {st['instrumentations']}")
+st = c.status("file-app")
+if st:
+    c.check(st["overridden_by_app"] == ["OTEL_SERVICE_NAME"], f"[file-app] overridden_by_app {st['overridden_by_app']}")
+    sn = st["effective_config"].get("OTEL_SERVICE_NAME", {})
+    c.check(sn == {"value": "smoke-file-app", "origin": "app_env"}, f"[file-app] service name effective config {sn}")
 
 # 4. broken config file
 st = c.status("broken")

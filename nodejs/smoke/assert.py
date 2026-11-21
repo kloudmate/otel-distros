@@ -31,6 +31,12 @@ st = c.status("appenv")
 if st:
     ep = st["effective_config"].get("OTEL_EXPORTER_OTLP_ENDPOINT", {})
     c.check(ep == {"value": "http://127.0.0.1:14318", "origin": "app_env"}, f"[appenv] endpoint effective config {ep}")
+    c.check(st["overridden_by_app"] == ["OTEL_EXPORTER_OTLP_ENDPOINT"], f"[appenv] overridden_by_app {st['overridden_by_app']}")
+
+# 4b. a config file whose ${OTEL_SERVICE_NAME} the app supplies
+st = c.status("file-app")
+if st:
+    c.check(st["overridden_by_app"] == ["OTEL_SERVICE_NAME"], f"[file-app] overridden_by_app {st['overridden_by_app']}")
 
 # 3. ESM
 c.common("esm", "esm", "smoke-esm", "systemd:smoke-esm.service")
@@ -41,6 +47,7 @@ st = c.status("file")
 c.check(st is not None and st["config_hash"].startswith("sha256:"), "[file] status with config_hash")
 if st:
     c.check(st["km.service_id"] == "systemd:smoke-file.service", "[file] status km.service_id from the block")
+    c.check(st["overridden_by_app"] == [], f"[file] overridden_by_app {st['overridden_by_app']}")
     tr = st["effective_config"].get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", {})
     c.check(tr == {"value": "http://127.0.0.1:24318/v1/traces", "origin": "distro_default"}, f"[file] traces endpoint filled {tr}")
     mt = st["effective_config"].get("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", {})

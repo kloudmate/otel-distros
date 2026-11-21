@@ -90,7 +90,6 @@ logs one `[kloudmate-java]` line on stderr, and the agent continues with upstrea
 ## Limitations
 
 - The Java OTLP exporters have no Unix-socket transport, so `agent.otlp_socket` is skipped and TCP is used.
-- `overridden_by_app` is always empty in this release.
 - Planned: remote configuration over OpAMP, continuous profiling, and a config-file handoff for JVMs attached at
   runtime.
 

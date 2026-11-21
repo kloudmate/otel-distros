@@ -18,6 +18,7 @@ if st:
     c.check(st["result"] == "ok", f"[defaults] status result={st['result']!r}")
     c.check(st["distro"]["name"] == "kloudmate-java", "[defaults] status distro.name")
     c.check(st["km.service_id"] == "systemd:smoke.service", "[defaults] status km.service_id")
+    c.check(st["overridden_by_app"] == [], f"[defaults] overridden_by_app {st['overridden_by_app']}")
     ep = st["effective_config"].get("OTEL_EXPORTER_OTLP_ENDPOINT", {})
     c.check(ep == {"value": "http://127.0.0.1:4318", "origin": "distro_default"}, f"[defaults] endpoint effective config {ep}")
 
@@ -29,6 +30,7 @@ st = c.status("appenv")
 if st:
     ep = st["effective_config"].get("OTEL_EXPORTER_OTLP_ENDPOINT", {})
     c.check(ep == {"value": "http://127.0.0.1:14318", "origin": "app_env"}, f"[appenv] endpoint effective config {ep}")
+    c.check("OTEL_EXPORTER_OTLP_ENDPOINT" in st["overridden_by_app"], f"[appenv] overridden_by_app {st['overridden_by_app']}")
 
 # 3. declarative config file
 c.common("file", "file", "smoke-file", "systemd:smoke-file.service")
@@ -64,6 +66,7 @@ c.check(st is not None, "[noverify-file] status file written")
 if st:
     c.check(st["result"] == "denied" and st["reason"] == "bytecode_verification_off",
             f"[noverify-file] status {st['result']!r}/{st['reason']!r}")
+    c.check(st["overridden_by_app"] == ["OTEL_SERVICE_NAME"], f"[noverify-file] overridden_by_app {st['overridden_by_app']}")
 c.check(not spans_of("smoke-noverify-file"), "[noverify-file] no spans under a config file either")
 
 c.done()

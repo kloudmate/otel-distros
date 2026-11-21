@@ -168,6 +168,22 @@ final class KmStartupCheck {
     }
   }
 
+  /** A small text file's contents, or null when it can't be read. */
+  static String text(String path) {
+    if (!KmDistro.notBlank(path)) {
+      return null;
+    }
+    try {
+      File f = new File(path);
+      if (f.length() > 1024 * 1024) {
+        return null;
+      }
+      return new String(read(f), StandardCharsets.UTF_8);
+    } catch (Throwable t) {
+      return null;
+    }
+  }
+
   /** sha256:&lt;hex&gt; of a file, or "" when it can't be read. */
   static String hash(String path) {
     if (!KmDistro.notBlank(path)) {

@@ -81,7 +81,6 @@ file.
 
 - The upstream OTLP exporters take no Unix-socket path from configuration, so `agent.otlp_socket` is skipped and
   TCP is used.
-- `overridden_by_app` is always empty in this release.
 - Planned: remote configuration over OpAMP, and optional continuous profiling.
 
 ## Development

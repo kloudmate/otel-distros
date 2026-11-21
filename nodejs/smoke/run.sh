@@ -51,6 +51,10 @@ echo ">>> 4. config file (opt-in, experimental upstream)"
 run_app file "$REQ" "$HERE/app.cjs" OTEL_CONFIG_FILE="$HERE/config.yaml" SMOKE_FILE_PORT=24318 \
   KM_SERVICE_ID=ignored-by-block SMOKE_TARGET=http://127.0.0.1:24318/health
 
+echo ">>> 4b. a config file whose \${OTEL_SERVICE_NAME} the app supplies"
+run_app file-app "$REQ" "$HERE/app.cjs" OTEL_CONFIG_FILE="$HERE/config.yaml" SMOKE_FILE_PORT=24318 \
+  OTEL_SERVICE_NAME=smoke-file-app SMOKE_TARGET=http://127.0.0.1:24318/health
+
 echo ">>> 5. SIGTERM still terminates an app without its own handler"
 mkdir -p "$WORK/status-sigterm"
 env -i PATH="$PATH" HOME="$HOME" NODE_OPTIONS="$REQ" KM_SDK_STATUS_DIR="$WORK/status-sigterm" \

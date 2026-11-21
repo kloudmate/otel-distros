@@ -55,7 +55,11 @@ public final class KmAutoConfigCustomizer implements AutoConfigurationCustomizer
             KmStatus st = new KmStatus();
             st.serviceId = settings.serviceId;
             for (String k : defaults.keySet()) {
-              st.put(KmDistro.envName(k), config.getString(k), KmDistro.setByApp(k) ? "app_env" : "distro_default");
+              boolean app = KmDistro.setByApp(k);
+              st.put(KmDistro.envName(k), config.getString(k), app ? "app_env" : "distro_default");
+              if (app) {
+                st.overridden(KmDistro.envName(k));
+              }
             }
             for (String k : new String[] {"otel.service.name", "otel.traces.sampler", "otel.traces.sampler.arg"}) {
               if (KmDistro.setByApp(k)) {
