@@ -18,7 +18,7 @@ import java.util.Map;
 public final class KmAutoConfigCustomizer implements AutoConfigurationCustomizerProvider {
   static final String DEFAULT_ENABLED = "otel.instrumentation.common.default-enabled";
 
-  /** KloudMate defaults over upstream 2.29.0 (README "What it adds"). */
+  /** KloudMate defaults over upstream 2.34.0 (README "What it adds"). */
   static Map<String, String> defaults(KmSettings s) {
     Map<String, String> d = new LinkedHashMap<String, String>();
     d.put("otel.exporter.otlp.endpoint", s.endpoint());

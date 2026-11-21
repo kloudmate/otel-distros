@@ -3,10 +3,7 @@ package com.kloudmate.otel;
 import io.opentelemetry.sdk.autoconfigure.declarativeconfig.DeclarativeConfigurationCustomizer;
 import io.opentelemetry.sdk.autoconfigure.declarativeconfig.DeclarativeConfigurationCustomizerProvider;
 import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.AttributeNameValueModel;
-import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.DistributionPropertyModel;
-import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.ExperimentalInstrumentationModel;
-import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.ExperimentalLanguageSpecificInstrumentationModel;
-import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.ExperimentalLanguageSpecificInstrumentationPropertyModel;
+import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.AttributeTypeModel;
 import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.OpenTelemetryConfigurationModel;
 import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.OtlpHttpExporterModel;
 import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.ResourceModel;
@@ -42,7 +39,7 @@ public final class KmDeclarativeConfigCustomizer implements DeclarativeConfigura
       ResourceModel res = model.getResource();
       if (res == null) {
         res = new ResourceModel();
-        model.withResource(res);
+        model.setResource(res);
       }
       List<AttributeNameValueModel> attrs =
           res.getAttributes() == null ? new ArrayList<AttributeNameValueModel>() : new ArrayList<AttributeNameValueModel>(res.getAttributes());
@@ -53,10 +50,12 @@ public final class KmDeclarativeConfigCustomizer implements DeclarativeConfigura
       }
       set(attrs, KmDistro.DISTRO_NAME, KmDistro.NAME);
       set(attrs, KmDistro.DISTRO_VERSION, KmDistro.VERSION);
-      res.withAttributes(attrs);
+      res.setAttributes(attrs);
 
       fillEndpoints(model, s.endpoint(), st);
-      runtimeMetrics(model, s.runtimeMetricsProfile, st);
+      // The runtime-metrics fill itself runs in KmVerifierGuard: the agent reads instrumentation settings
+      // before this customizer.
+      st.put("runtime_metrics.profile", s.runtimeMetricsProfile, "file");
 
       KmStartupCheck.run(st, Boolean.TRUE.equals(model.getDisabled()), KmVerifierGuard.instrumentationOnByDefault(model));
       st.write(s.statusDir);
@@ -72,12 +71,13 @@ public final class KmDeclarativeConfigCustomizer implements DeclarativeConfigura
   }
 
   /** The {@code distribution.kloudmate} block, or an empty map. */
+  @SuppressWarnings("unchecked")
   static Map<String, Object> block(OpenTelemetryConfigurationModel model) {
-    if (model.getDistribution() == null || model.getDistribution().getAdditionalProperties() == null) {
+    if (model.getDistribution() == null || model.getDistribution().getExtensionProperties() == null) {
       return Collections.emptyMap();
     }
-    DistributionPropertyModel km = model.getDistribution().getAdditionalProperties().get("kloudmate");
-    return km == null || km.getAdditionalProperties() == null ? Collections.<String, Object>emptyMap() : km.getAdditionalProperties();
+    Object km = model.getDistribution().getExtensionProperties().get("kloudmate");
+    return km instanceof Map ? (Map<String, Object>) km : Collections.<String, Object>emptyMap();
   }
 
   /** Sets the endpoint on every otlp_http exporter that has none (local-agent discovery). */
@@ -115,7 +115,7 @@ public final class KmDeclarativeConfigCustomizer implements DeclarativeConfigura
     filled += fill(spans, b + "/v1/traces");
     for (io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.OtlpHttpMetricExporterModel e : metrics) {
       if (!KmDistro.notBlank(e.getEndpoint())) {
-        e.withEndpoint(b + "/v1/metrics");
+        e.setEndpoint(b + "/v1/metrics");
         filled++;
       }
     }
@@ -127,7 +127,7 @@ public final class KmDeclarativeConfigCustomizer implements DeclarativeConfigura
     int n = 0;
     for (OtlpHttpExporterModel e : exporters) {
       if (!KmDistro.notBlank(e.getEndpoint())) {
-        e.withEndpoint(endpoint);
+        e.setEndpoint(endpoint);
         n++;
       }
     }
@@ -139,32 +139,22 @@ public final class KmDeclarativeConfigCustomizer implements DeclarativeConfigura
    * {@code extended} turn on the experimental JVM metrics ({@code emit_experimental_metrics/development}, plan 0.3). A value the file already sets under
    * {@code instrumentation/development.java.runtime_telemetry} wins.
    */
-  static void runtimeMetrics(OpenTelemetryConfigurationModel m, String profile, KmStatus st) {
-    ExperimentalInstrumentationModel inst = m.getInstrumentationDevelopment();
-    if (inst == null) {
-      inst = new ExperimentalInstrumentationModel();
-      m.withInstrumentationDevelopment(inst);
-    }
-    ExperimentalLanguageSpecificInstrumentationModel java = inst.getJava();
-    if (java == null) {
-      java = new ExperimentalLanguageSpecificInstrumentationModel();
-      inst.withJava(java);
-    }
-    ExperimentalLanguageSpecificInstrumentationPropertyModel rt = java.getAdditionalProperties().get("runtime_telemetry");
+  static void runtimeMetrics(OpenTelemetryConfigurationModel m, String profile) {
+    // Edited as the raw YAML mapping under instrumentation/development, the form the agent reads.
+    Map<String, Object> inst = KmDistro.mapCopy(m.getExtensionProperties().get("instrumentation/development"));
+    Map<String, Object> java = inst == null ? null : KmDistro.mapCopy(inst.get("java"));
+    Map<String, Object> rt = java == null ? null : KmDistro.mapCopy(java.get("runtime_telemetry"));
     if (rt == null) {
-      rt = new ExperimentalLanguageSpecificInstrumentationPropertyModel();
-      java.setAdditionalProperty("runtime_telemetry", rt);
+      return; // a value of another shape: the agent reports it
     }
-    Map<String, Object> props = rt.getAdditionalProperties();
-    // Declarative key names carry the /development suffix for experimental options (agent 2.29.0).
+    // Declarative key names carry the /development suffix for experimental options (agent 2.34.0).
     String key = "off".equals(profile) ? "enabled" : "emit_experimental_metrics/development";
-    Object want = "off".equals(profile) ? Boolean.FALSE : Boolean.TRUE;
-    if (props.containsKey(key)) {
-      st.put("runtime_metrics.profile", profile, "file");
-      return;
+    if (!rt.containsKey(key)) {
+      rt.put(key, "off".equals(profile) ? Boolean.FALSE : Boolean.TRUE);
+      java.put("runtime_telemetry", rt);
+      inst.put("java", java);
+      m.setExtensionProperty("instrumentation/development", inst);
     }
-    rt.setAdditionalProperty(key, want);
-    st.put("runtime_metrics.profile", profile, "file");
   }
 
   private static String attr(List<AttributeNameValueModel> attrs, String name) {
@@ -186,7 +176,7 @@ public final class KmDeclarativeConfigCustomizer implements DeclarativeConfigura
   }
 
   private static AttributeNameValueModel stringAttr(String name, String value) {
-    return new AttributeNameValueModel().withName(name).withValue(value).withType(AttributeNameValueModel.AttributeType.STRING);
+    return new AttributeNameValueModel().setName(name).setValue(value).setType(AttributeTypeModel.STRING);
   }
 
   @Override

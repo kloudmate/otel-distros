@@ -6,12 +6,12 @@ plugins {
 }
 
 group = "com.kloudmate.otel"
-version = providers.gradleProperty("distroVersion").getOrElse("0.1.1")
+version = providers.gradleProperty("distroVersion").getOrElse("0.2.0")
 
 // Upstream versions this release layers on. Keep in step with JAVA_AGENT_VERSION in
 // scripts/otel-agent-bundles/build.sh; the SDK version is the one that agent bundles.
-val agentVersion = "2.29.0"
-val sdkVersion = "1.63.0"
+val agentVersion = "2.34.0"
+val sdkVersion = "1.68.0"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8

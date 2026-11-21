@@ -6,10 +6,10 @@ startup health check.
 
 | | |
 | --- | --- |
-| Built on | `opentelemetry-javaagent` 2.29.0 (SDK 1.63.0) |
+| Built on | `opentelemetry-javaagent` 2.34.0 (SDK 1.68.0) |
 | Runtime | Java 8 and later, any JVM vendor |
 | Platforms | Linux x86-64, arm64 |
-| Status | Preview (0.1.1) |
+| Status | Preview (0.2.0) |
 
 Each release is tested against one agent version, recorded in its `km-manifest.json`. Use it with that version.
 

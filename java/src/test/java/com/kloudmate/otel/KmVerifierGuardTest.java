@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.DistributionModel;
-import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.DistributionPropertyModel;
 import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.OpenTelemetryConfigurationModel;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -65,7 +64,7 @@ class KmVerifierGuardTest {
   void keepsTheFilesOtherInstrumentationSettings() {
     OpenTelemetryConfigurationModel m = model(null);
     KmVerifierGuard.disableByDefault(m);
-    Map<?, ?> i = (Map<?, ?>) m.getDistribution().getAdditionalProperties().get("javaagent").getAdditionalProperties().get("instrumentation");
+    Map<?, ?> i = (Map<?, ?>) ((Map<?, ?>) m.getDistribution().getExtensionProperties().get("javaagent")).get("instrumentation");
     assertEquals(Boolean.FALSE, i.get("default_enabled"));
     assertEquals(Arrays.asList("jdbc"), i.get("enabled"));
   }
@@ -107,7 +106,8 @@ class KmVerifierGuardTest {
       instrumentation.put("default_enabled", defaultEnabled);
     }
     instrumentation.put("enabled", Arrays.asList("jdbc"));
-    DistributionPropertyModel agent = new DistributionPropertyModel().withAdditionalProperty("instrumentation", instrumentation);
-    return new OpenTelemetryConfigurationModel().withDistribution(new DistributionModel().withAdditionalProperty("javaagent", agent));
+    Map<String, Object> agent = new LinkedHashMap<String, Object>();
+    agent.put("instrumentation", instrumentation);
+    return new OpenTelemetryConfigurationModel().setDistribution(new DistributionModel().setExtensionProperty("javaagent", agent));
   }
 }

@@ -2,8 +2,8 @@
   "schema_version": 1,
   "distro": {
     "name": "kloudmate-java",
-    "version": "0.1.1",
-    "upstream": { "component": "opentelemetry-javaagent", "version": "2.29.0" }
+    "version": "0.2.0",
+    "upstream": { "component": "opentelemetry-javaagent", "version": "2.34.0" }
   },
   "runtime": { "name": "java", "version_range": ">=8" },
   "platforms": [
@@ -21,7 +21,7 @@
     "reads_config_file": true
   },
   "artifacts": [
-    { "path": "opentelemetry-javaagent.jar", "sha256": "546531ca690a8603d2923b6db26bbda35c6409327b1e610430ae33c2f8f68050" },
+    { "path": "opentelemetry-javaagent.jar", "sha256": "da44154cea128257779c8a782b9651fd7c0c6aa177cd3810f9a867ac8509555d" },
     { "path": "kloudmate-otel-extension.jar", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
   ],
   "provenance": {

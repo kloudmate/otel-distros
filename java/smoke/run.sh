@@ -5,8 +5,8 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-AGENT_VERSION="${JAVA_AGENT_VERSION:-2.29.0}"
-AGENT_SHA256="${JAVA_AGENT_SHA256:-546531ca690a8603d2923b6db26bbda35c6409327b1e610430ae33c2f8f68050}"
+AGENT_VERSION="${JAVA_AGENT_VERSION:-2.34.0}"
+AGENT_SHA256="${JAVA_AGENT_SHA256:-da44154cea128257779c8a782b9651fd7c0c6aa177cd3810f9a867ac8509555d}"
 WORK="${SMOKE_WORK:-$(mktemp -d)}"
 CACHE="${SMOKE_CACHE:-$HOME/.cache/kloudmate-otel-distros}"
 mkdir -p "$WORK" "$CACHE"

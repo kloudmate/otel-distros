@@ -8,7 +8,6 @@ import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.AttributeNameValueModel;
 import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.DistributionModel;
-import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.DistributionPropertyModel;
 import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.OpenTelemetryConfigurationModel;
 import io.opentelemetry.sdk.autoconfigure.declarativeconfig.model.ResourceModel;
 import io.opentelemetry.sdk.resources.Resource;
@@ -61,20 +60,20 @@ class KmDistroTest {
 
   @Test
   void declarativeKeepsFileServiceIdAndReadsBlock(@TempDir Path dir) throws Exception {
-    DistributionPropertyModel km = new DistributionPropertyModel()
-        .withAdditionalProperty("service_id", "systemd:block.service")
-        .withAdditionalProperty("status_dir", dir.toString());
+    Map<String, Object> km = new HashMap<String, Object>();
+    km.put("service_id", "systemd:block.service");
+    km.put("status_dir", dir.toString());
     OpenTelemetryConfigurationModel m = new OpenTelemetryConfigurationModel()
-        .withDistribution(new DistributionModel().withAdditionalProperty("kloudmate", km));
+        .setDistribution(new DistributionModel().setExtensionProperty("kloudmate", km));
     KmDeclarativeConfigCustomizer.apply(m);
     assertEquals("systemd:block.service", value(m.getResource(), "km.service_id"));
     assertEquals("kloudmate-java", value(m.getResource(), "telemetry.distro.name"));
     assertTrue(Files.list(dir).anyMatch(p -> p.toString().endsWith(".json")), "status file");
 
     OpenTelemetryConfigurationModel own = new OpenTelemetryConfigurationModel()
-        .withResource(new ResourceModel().withAttributes(Arrays.asList(
-            new AttributeNameValueModel().withName("km.service_id").withValue("from-file"))))
-        .withDistribution(new DistributionModel().withAdditionalProperty("kloudmate", km));
+        .setResource(new ResourceModel().setAttributes(Arrays.asList(
+            new AttributeNameValueModel().setName("km.service_id").setValue("from-file"))))
+        .setDistribution(new DistributionModel().setExtensionProperty("kloudmate", km));
     KmDeclarativeConfigCustomizer.apply(own);
     assertEquals("from-file", value(own.getResource(), "km.service_id"));
   }
