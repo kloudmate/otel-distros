@@ -139,6 +139,23 @@ def complete_model(config: Any, settings: Settings, st: Status, sock: str | None
     return socket_signals
 
 
+def _start_opamp(settings: Settings, st: Status) -> None:
+    """The OpAMP client, when an endpoint is configured; before instrumentations create their tracers."""
+    if not settings.opamp_endpoint:
+        return
+    try:
+        from opentelemetry import trace
+
+        from . import _opamp
+
+        provider = trace.get_tracer_provider()
+        resource = getattr(provider, "resource", None)
+        name = str((resource.attributes if resource is not None else {}).get("service.name") or "unknown_service")
+        _opamp.start(settings.opamp_endpoint, st, settings.status_dir, provider, name)
+    except Exception:
+        _logger.debug("OpAMP client not started", exc_info=True)
+
+
 class _ConfigFileError(Exception):
     pass
 
@@ -185,6 +202,7 @@ class KloudMateConfigurator(_OTelSDKConfigurator):
         attrs = dict(kwargs.pop("resource_attributes", None) or {})
         attrs.update(stamp_attributes(settings.service_id))
         _initialize_components(resource_attributes=attrs, **kwargs)
+        _start_opamp(settings, st)
 
     def _configure_file(self, path: str) -> None:
         from opentelemetry.configuration import configure_sdk
@@ -213,3 +231,4 @@ class KloudMateConfigurator(_OTelSDKConfigurator):
         st.write(settings.status_dir)
         remember(st, settings.status_dir)
         configure_sdk(config)
+        _start_opamp(settings, st)

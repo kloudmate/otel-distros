@@ -38,6 +38,10 @@ cp "$bundle/sitecustomize.py" "$bundle/VERSION" "$bundle_grpc/"
 # The KloudMate Agent's socket speaks OTLP/gRPC.
 SOCK="$WORK/otlp.sock"
 "$WORK/otlpsink" -listen "grpc+unix:$SOCK" -out "$WORK/socket.jsonl" 2>"$WORK/sink-socket.log" & PIDS+=($!)
+# A stand-in for the KloudMate Agent's OpAMP server, serving one remote config.
+(cd "$ROOT/smoke/opampsink" && go build -o "$WORK/opampsink" .)
+printf '{"sampling_rate": 0, "logging_level": "debug"}' > "$WORK/remote.json"
+"$WORK/opampsink" -listen 127.0.0.1:4320 -out "$WORK/opamp.jsonl" -remote "$WORK/remote.json" 2>"$WORK/opamp.log" & PIDS+=($!)
 sleep 1
 
 # Only what a scenario sets, as km-agent's activation would: PYTHONPATH and the KM_/OTEL_ vars.
@@ -79,6 +83,10 @@ run_app socket-nogrpc KM_SERVICE_ID=systemd:smoke-nogrpc.service OTEL_SERVICE_NA
 
 echo ">>> 6c. a config file whose otlp_grpc exporters have no endpoint: the socket"
 run_app file-socket PYTHONPATH="$bundle_grpc" OTEL_CONFIG_FILE="$HERE/config-socket.yaml" SMOKE_SOCKET="$SOCK"
+
+echo ">>> 7. OpAMP: health and status reported, a remote sampling_rate of 0 applied live"
+run_app opamp KM_SERVICE_ID=systemd:smoke-opamp.service OTEL_SERVICE_NAME=smoke-opamp \
+  KM_OPAMP_ENDPOINT=http://127.0.0.1:4320/v1/opamp KM_OPAMP_POLL_INTERVAL=1 SMOKE_DELAY_S=2
 
 if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
   echo ">>> 5. Python 2.7: bootstrap parses, app runs, status says why"

@@ -62,7 +62,7 @@ Lowest to highest:
 1. upstream SDK defaults
 2. KloudMate defaults
 3. the configuration file
-4. remote settings (planned, see §4; in memory only)
+4. remote settings (§4; in memory only)
 5. **any setting the application sets itself** (`OTEL_*` environment variables or the language's equivalent,
    such as Java system properties)
 
@@ -70,22 +70,54 @@ A generated configuration file refers to the application's variables through `${
 substitutions, so the application's values win inside the file too. Each effective value records where it came
 from (`sdk_default`, `distro_default`, `file`, `remote`, `app_env`).
 
-## 4. Remote configuration (planned)
+## 4. Remote configuration
 
-An OpAMP client connects to the local KloudMate Agent. It reports health and effective configuration, and
-accepts these live settings:
+An OpAMP client reports health and the startup status to the local KloudMate Agent, and applies the remote
+settings that can change while the process runs. It is off unless an endpoint is configured:
+`distribution.kloudmate.agent.opamp_endpoint`, else `KM_OPAMP_ENDPOINT` (for Java at runtime attach,
+`kloudmate.agent.opamp_endpoint` in the attach file).
 
-| Key | Type |
-| --- | --- |
-| `logging_level` | `trace` \| `debug` \| `info` \| `warn` \| `error` \| `off` |
-| `sampling_rate` | float 0–1 (parent-based ratio) |
-| `send_traces` / `send_metrics` / `send_logs` | bool |
-| `deactivate_instrumentations` | comma-separated list |
-| `deactivate_all_instrumentations` | bool |
-| `metrics_profile` | `standard` \| `extended` \| `off` |
+Transport: OpAMP over plain HTTP. The client POSTs an `AgentToServer` message (`application/x-protobuf`) every
+`KM_OPAMP_POLL_INTERVAL` seconds (default 30, with 10% jitter), and the response is a `ServerToAgent` message. The
+client's own requests are never traced.
 
-A remote setting never overrides one the application sets itself; such keys are reported as
-`overridden_by_app`. Endpoint changes and newly enabled instrumentations need a restart.
+Each message carries:
+
+- `instance_uid`: a UUIDv7 made at startup, new in a forked child;
+- `capabilities`: ReportsStatus, AcceptsRemoteConfig, ReportsEffectiveConfig, ReportsHealth, ReportsRemoteConfig;
+- `health`: `healthy` unless the status result is `disabled`, `denied`, `unsupported_runtime` or `error`; `status`
+  is the result, `last_error` the reason;
+- `effective_config`: the status file's JSON (§5) under the key `kloudmate.status`;
+- `remote_config_status` once a remote config has arrived;
+- `agent_description` in the first message and whenever the server sets `ReportFullState`: identifying
+  `service.name`, `service.instance.id` (the `instance_uid`) and `km.service_id`; non-identifying
+  `telemetry.distro.name`, `telemetry.distro.version`, `process.pid` and `os.type`.
+
+The server sends settings as a JSON object under the remote config key `kloudmate`:
+
+| Key | Type | Applied |
+| --- | --- | --- |
+| `sampling_rate` | number 0–1 (parent-based ratio) | live |
+| `send_traces` | bool; `false` drops every span | live |
+| `logging_level` | `trace` \| `debug` \| `info` \| `warn` \| `error` \| `off` | not yet |
+| `send_metrics` / `send_logs` | bool | not yet |
+| `deactivate_instrumentations` | comma-separated list | not yet |
+| `deactivate_all_instrumentations` | bool | not yet |
+| `metrics_profile` | `standard` \| `extended` \| `off` | not yet |
+
+- A config whose hash the client has already applied is ignored. An empty object returns to the configured
+  behaviour; a config that is not sent leaves the last one in place.
+- An invalid value fails the whole config (`FAILED`, with the reason in `error_message`), and nothing changes.
+- Otherwise the status is `APPLIED`, and `error_message` lists the keys set by the application and the keys not
+  applied live. Unknown keys are ignored.
+- A remote setting never overrides one the application sets itself: `sampling_rate` gives way to
+  `OTEL_TRACES_SAMPLER` or `OTEL_TRACES_SAMPLER_ARG`, and `send_traces` to `OTEL_TRACES_EXPORTER`. Such keys are
+  listed in `overridden_by_app`.
+- Applied keys appear in the status's `effective_config` with origin `remote`, and the status file is rewritten.
+  Remote settings live in memory only: a restart starts from the configured values.
+
+Where a runtime can't take the live keys, the distribution reports them as not applied live; see each language's
+README.
 
 ## 5. Status file
 

@@ -95,7 +95,9 @@ specific to Python:
   otherwise TCP is used.
 - The status lists the instrumentations the distro activated as they load, so it is rewritten a few times at
   startup.
-- Planned: live configuration over OpAMP, and optional continuous profiling.
+- Over OpAMP ([remote configuration](../contract/README.md#4-remote-configuration)), `sampling_rate` and
+  `send_traces` apply live; the other remote keys are reported as not applied live.
+- Planned: optional continuous profiling.
 
 ## Development
 

@@ -75,6 +75,9 @@ if st:
     lg = st["effective_config"].get("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", {})
     c.check(lg == {"value": sock, "origin": "distro_default"}, f"[file-socket] logs endpoint {lg}")
 
+# 7. OpAMP
+c.opamp("opamp", "smoke-opamp", "systemd:smoke-opamp.service")
+
 # 5. Python 2.7 (when Docker was available)
 if os.path.isdir(os.path.join(sys.argv[1], "status-py27")):
     st = c.status("py27")

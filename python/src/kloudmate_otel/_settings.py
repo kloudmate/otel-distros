@@ -39,6 +39,7 @@ class Settings:
     otlp_endpoint: str | None
     runtime_metrics_profile: str
     status_dir: str
+    opamp_endpoint: str | None = None
 
     @classmethod
     def from_block(cls, block: Mapping[str, Any] | None = None) -> "Settings":
@@ -56,6 +57,7 @@ class Settings:
             status_dir=_str(block.get("status_dir"))
             or _str(os.environ.get("KM_SDK_STATUS_DIR"))
             or DEFAULT_STATUS_DIR,
+            opamp_endpoint=_str(agent.get("opamp_endpoint")) or _str(os.environ.get("KM_OPAMP_ENDPOINT")),
         )
 
     def endpoint(self) -> str:
