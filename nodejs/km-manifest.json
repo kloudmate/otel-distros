@@ -21,7 +21,7 @@
     "reads_config_file": false
   },
   "artifacts": [
-    { "path": "kloudmate-opentelemetry-node-0.1.0.tgz", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    { "path": "kloudmate-opentelemetry-node-0.2.0.tgz", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
     { "path": "package-lock.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
   ],
   "provenance": {
