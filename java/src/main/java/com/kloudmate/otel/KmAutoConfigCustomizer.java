@@ -54,6 +54,9 @@ public final class KmAutoConfigCustomizer implements AutoConfigurationCustomizer
       return;
     }
     c.addPropertiesSupplier(() -> supplied);
+    // The startup status, for the OpAMP client (contract §4), which starts once the resource is known.
+    final java.util.concurrent.atomic.AtomicReference<KmStatus> written = new java.util.concurrent.atomic.AtomicReference<KmStatus>();
+    final String opampEndpoint = KmOpamp.endpoint(attach.path != null ? attach.block : null);
     c.addPropertiesCustomizer(
         config -> {
           try {
@@ -78,12 +81,23 @@ public final class KmAutoConfigCustomizer implements AutoConfigurationCustomizer
             }
             KmStartupCheck.run(st, config.getBoolean("otel.sdk.disabled", false), config.getBoolean(DEFAULT_ENABLED, true));
             st.write(settings.statusDir);
+            written.set(st);
           } catch (Throwable t) {
             KmDistro.warn("status not reported", t);
           }
           return Collections.<String, String>emptyMap();
         });
-    c.addResourceCustomizer((resource, config) -> stamp(resource, settings.serviceId));
+    c.addResourceCustomizer(
+        (resource, config) -> {
+          Resource r = stamp(resource, settings.serviceId);
+          if (KmDistro.notBlank(opampEndpoint)) {
+            KmOpamp.start(opampEndpoint, written.get(), settings.statusDir,
+                r.getAttribute(AttributeKey.stringKey("service.name")), true);
+          }
+          return r;
+        });
+    // Live remote settings (sampling_rate, send_traces) go through a sampler around the configured one.
+    c.addSamplerCustomizer((sampler, config) -> KmOpamp.instance() == null ? sampler : KmOpamp.wrap(sampler));
   }
 
   /**

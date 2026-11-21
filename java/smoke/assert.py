@@ -89,4 +89,7 @@ c.common("runtime-attach", "default", "smoke-runtime-attach", "proc:smoke-runtim
 st = c.status("runtime")
 c.check(st is not None and st["result"] == "ok", f"[runtime-attach] status {st and (st['result'], st['reason'])}")
 
+# 10. OpAMP
+c.opamp("opamp", "smoke-opamp", "systemd:smoke-opamp.service")
+
 c.done()

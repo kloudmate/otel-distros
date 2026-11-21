@@ -51,9 +51,9 @@ otel.service.name=checkout
 otel.resource.attributes=deployment.environment.name=prod
 ```
 
-- `kloudmate.service_id`, `kloudmate.status_dir`, `kloudmate.agent.otlp_endpoint` and
-  `kloudmate.runtime_metrics.profile` work as in `distribution.kloudmate`, and take precedence over `KM_*`
-  variables.
+- `kloudmate.service_id`, `kloudmate.status_dir`, `kloudmate.agent.otlp_endpoint`,
+  `kloudmate.agent.opamp_endpoint` and `kloudmate.runtime_metrics.profile` work as in `distribution.kloudmate`,
+  and take precedence over `KM_*` variables.
 - `otel.*` properties apply below anything the application sets itself, and above the KloudMate defaults. Their
   origin in the status file is `file`, and `config_hash` is the file's hash.
 - Settings the agent reads before extensions load, such as `otel.javaagent.*` and `otel.config.file`, have no
@@ -128,7 +128,10 @@ logs one `[kloudmate-java]` line on stderr, and the agent continues with upstrea
 
 - The Java OTLP exporters have no Unix-socket transport, so `agent.otlp_socket` and `KM_OTLP_SOCKET` are skipped and
   TCP is used.
-- Planned: remote configuration over OpAMP, and continuous profiling.
+- Over OpAMP ([remote configuration](../contract/README.md#4-remote-configuration)), `sampling_rate` and
+  `send_traces` apply live without a config file. With one, the file names the sampler, so they're reported as
+  not applied live. The client speaks HTTP/1.1 over a plain socket, so its own requests are never traced.
+- Planned: continuous profiling.
 
 ## Development
 
@@ -145,4 +148,5 @@ The smoke test runs these scenarios:
 3. a config file with exporters that have no endpoint;
 4. JVMs without bytecode verification (no instrumentation, unless the app turns it on);
 5. `kloudmate-javaagent.jar` alone, with a properties file, and with your own settings over the file's;
-6. a runtime attach to a running JVM, configured by a properties file.
+6. a runtime attach to a running JVM, configured by a properties file;
+7. OpAMP: health and status reported, and a remote `sampling_rate` applied live.

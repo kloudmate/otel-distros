@@ -94,6 +94,8 @@ final class KmAttachConfig {
         block.put("status_dir", v);
       } else if (k.equals("kloudmate.agent.otlp_endpoint")) {
         agent.put("otlp_endpoint", v);
+      } else if (k.equals("kloudmate.agent.opamp_endpoint")) {
+        agent.put("opamp_endpoint", v);
       } else if (k.equals("kloudmate.runtime_metrics.profile")) {
         block.put("runtime_metrics", Collections.<String, Object>singletonMap("profile", v));
       }

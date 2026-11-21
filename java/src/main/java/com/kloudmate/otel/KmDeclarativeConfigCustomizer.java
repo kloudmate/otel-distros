@@ -59,6 +59,8 @@ public final class KmDeclarativeConfigCustomizer implements DeclarativeConfigura
 
       KmStartupCheck.run(st, Boolean.TRUE.equals(model.getDisabled()), KmVerifierGuard.instrumentationOnByDefault(model));
       st.write(s.statusDir);
+      // OpAMP reports health and status; the file names the sampler, so the live keys aren't applied here.
+      KmOpamp.start(KmOpamp.endpoint(block(model)), st, s.statusDir, attr(attrs, "service.name"), false);
     } catch (Throwable t) {
       KmDistro.warn("declarative config not customized, running with the file as written", t);
     }

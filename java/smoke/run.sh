@@ -33,6 +33,10 @@ javac -d "$WORK/attach" "$HERE/Attach.java"
 "$WORK/otlpsink" -listen 127.0.0.1:14318 -out "$WORK/app.jsonl" 2>"$WORK/sink-app.log" & PIDS+=($!)
 "$WORK/otlpsink" -listen 127.0.0.1:24318 -out "$WORK/file.jsonl" 2>"$WORK/sink-file.log" & PIDS+=($!)
 "$WORK/otlpsink" -listen 127.0.0.1:34318 -out "$WORK/noverify.jsonl" 2>"$WORK/sink-noverify.log" & PIDS+=($!)
+# A stand-in for the KloudMate Agent's OpAMP server, serving one remote config.
+(cd "$ROOT/smoke/opampsink" && go build -o "$WORK/opampsink" .)
+printf '{"sampling_rate": 0, "logging_level": "debug"}' > "$WORK/remote.json"
+"$WORK/opampsink" -listen 127.0.0.1:4320 -out "$WORK/opamp.jsonl" -remote "$WORK/remote.json" 2>"$WORK/opamp.log" & PIDS+=($!)
 sleep 1
 
 # Only the variables a scenario sets: the caller's OTEL_* and JAVA_TOOL_OPTIONS never leak in. JVM_FLAGS holds
@@ -109,6 +113,10 @@ sleep 2
 env -i PATH="$PATH" HOME="$HOME" java -cp "$WORK/attach" Attach "$app" "$kmagent" "$WORK/agent-runtime.properties" \
   >"$WORK/attach.log" 2>&1 || { cat "$WORK/attach.log"; kill "$app"; exit 1; }
 wait "$app" || { cat "$WORK/app-runtime.log"; exit 1; }
+
+echo ">>> 10. OpAMP: health and status reported, a remote sampling_rate of 0 applied live"
+run_app opamp KM_SERVICE_ID=systemd:smoke-opamp.service OTEL_SERVICE_NAME=smoke-opamp \
+  KM_OPAMP_ENDPOINT=http://127.0.0.1:4320/v1/opamp KM_OPAMP_POLL_INTERVAL=1 SMOKE_DELAY_MS=2500
 
 sleep 1
 python3 "$HERE/assert.py" "$WORK"
