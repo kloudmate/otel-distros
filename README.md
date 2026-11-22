@@ -160,7 +160,7 @@ workflow, which tests each image and pushes it only when asked. See [images/](im
 
 | Language | Build | Test | Requires |
 | --- | --- | --- | --- |
-| Java | `cd java && gradle jar` | `gradle test` and `java/smoke/run.sh` | JDK 8+, Gradle 8, Go (smoke sink) |
+| Java | `cd java && ./gradlew jar agentJar` | `./gradlew test` and `java/smoke/run.sh` | JDK 17+ to build (the jars run on Java 8+), Go (smoke sink); the Gradle wrapper fetches Gradle |
 | Python | `python/release.sh` | `pytest python/tests` and `python/smoke/run.sh` | CPython 3.10+, Go (smoke sink); Docker optional |
 | Node.js | `nodejs/release.sh` | `npm test` and `nodejs/smoke/run.sh` | Node.js 18.19+ with npm, Go (smoke sink); Docker optional |
 | .NET | `dotnet/release.sh` | `dotnet/smoke/run.sh` | Docker (the .NET SDK runs in a container), Go (smoke sink) |

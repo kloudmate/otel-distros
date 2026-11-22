@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Local smoke test for the KloudMate Java distro: builds the extension and the OTLP sink, runs a sample
 # app under the upstream agent + extension, and asserts what reaches the sink and the status file.
-#   java/smoke/run.sh            (needs JDK 8+, Gradle, Go, curl; no Docker)
+#   java/smoke/run.sh            (needs a JDK 17+ to build, Go, curl; no Docker)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
@@ -22,7 +22,7 @@ if [ ! -f "$agent" ]; then
 fi
 echo "$AGENT_SHA256  $agent" | sha256sum -c --quiet -
 
-(cd "$ROOT/java" && gradle -q --no-daemon jar agentJar)
+(cd "$ROOT/java" && ./gradlew -q --no-daemon jar agentJar)
 ext="$ROOT/java/build/libs/kloudmate-otel-extension.jar"
 kmagent="$ROOT/java/build/libs/kloudmate-javaagent.jar"
 (cd "$ROOT/smoke/otlpsink" && go build -o "$WORK/otlpsink" .)

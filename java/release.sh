@@ -7,7 +7,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="${1:-$HERE/build/release}"
 VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["distro"]["version"])' "$HERE/km-manifest.json")"
-(cd "$HERE" && gradle -q --no-daemon -PdistroVersion="$VERSION" clean jar agentJar test)
+(cd "$HERE" && ./gradlew -q --no-daemon -PdistroVersion="$VERSION" clean jar agentJar test)
 mkdir -p "$OUT"
 cp "$HERE/build/libs/kloudmate-otel-extension.jar" "$HERE/build/libs/kloudmate-javaagent.jar" "$OUT/"
 COMMIT="$(git -C "$HERE" rev-parse -q --verify HEAD 2>/dev/null || echo 0000000000000000000000000000000000000000)"

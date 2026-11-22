@@ -25,8 +25,21 @@ if [ ! -f "$zip" ]; then
   echo "$want  $zip.tmp" | sha256sum -c --quiet -
   mv "$zip.tmp" "$zip"
 fi
+# Unpacks a zip with Python, keeping the file modes it records: the runner may have no unzip.
+unzip_to() {
+  python3 - "$1" "$2" <<'PY'
+import os, sys, zipfile
+src, dest = sys.argv[1:3]
+with zipfile.ZipFile(src) as z:
+    for info in z.infolist():
+        path = z.extract(info, dest)
+        mode = (info.external_attr >> 16) & 0o777
+        if mode and not info.is_dir():
+            os.chmod(path, mode)
+PY
+}
 home="$WORK/otel"
-mkdir -p "$home" && (cd "$home" && unzip -q "$zip")
+mkdir -p "$home" && unzip_to "$zip" "$home"
 
 "$DN/dotnet.sh" build -c Release -o build/out >/dev/null
 "$DN/dotnet.sh" publish smoke/app/SmokeApp.csproj -c Release -o build/smoke-app >/dev/null

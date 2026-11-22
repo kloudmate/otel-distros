@@ -3,8 +3,8 @@
 # arm64, on a pinned busybox (images/Dockerfile). Without --push nothing leaves the machine: the multi-arch image is
 # written as an OCI archive, and --load puts this machine's architecture into the local Docker instead.
 #   images/build.sh <java|python|nodejs|dotnet> [--tag <ref>] [--load | --push] [--out <dir>]
-# Needs Docker with buildx, curl, unzip; Python needs CPython 3 with pip, Node.js needs npm, Java needs a JDK and
-# Gradle, .NET needs Docker (the SDK runs in a container).
+# Needs Docker with buildx, curl, python3; Python needs CPython 3 with pip, Node.js needs npm, Java needs a JDK (the
+# Gradle wrapper fetches Gradle), .NET needs Docker (the SDK runs in a container).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
@@ -27,6 +27,20 @@ CACHE="${SMOKE_CACHE:-$HOME/.cache/kloudmate-otel-distros}"
 CTX="$OUT/$LANG_/context"
 REL="$OUT/$LANG_/release"
 rm -rf "$OUT/$LANG_"; mkdir -p "$CTX/amd64" "$CTX/arm64" "$CACHE"
+
+# Unpacks a zip with Python, keeping the file modes it records: the runner may have no unzip.
+unzip_to() {
+  python3 - "$1" "$2" <<'PY'
+import os, sys, zipfile
+src, dest = sys.argv[1:3]
+with zipfile.ZipFile(src) as z:
+    for info in z.infolist():
+        path = z.extract(info, dest)
+        mode = (info.external_attr >> 16) & 0o777
+        if mode and not info.is_dir():
+            os.chmod(path, mode)
+PY
+}
 
 fetch() { # url sha256 dest: download once into the cache, verify every time
   local url="$1" sum="$2" dest="$3"
@@ -99,7 +113,7 @@ layout_dotnet() {
     for libc in glibc musl; do
       z="opentelemetry-dotnet-instrumentation-linux-$libc-$zarch.zip"
       fetch "$base/$z" "$(grep " $z\$" "$sums" | cut -d' ' -f1)" "$CACHE/$v-$z"
-      mkdir -p "$OUT/dotnet/$arch-$libc" && (cd "$OUT/dotnet/$arch-$libc" && unzip -q "$CACHE/$v-$z")
+      mkdir -p "$OUT/dotnet/$arch-$libc" && unzip_to "$CACHE/$v-$z" "$OUT/dotnet/$arch-$libc"
     done
     # Both zips carry the same managed files; only the native profiler directories differ, and VERSION, whose build
     # annotation does (the glibc one, copied last, names the release tag).
