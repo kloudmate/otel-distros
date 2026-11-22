@@ -2,5 +2,6 @@
 const http = require('http');
 const target = process.env.SMOKE_TARGET || 'http://127.0.0.1:4318/health';
 const wait = Number(process.env.SMOKE_SLEEP_MS || 3000);
-http.get(target, (res) => res.resume()).on('error', () => {});
-setTimeout(() => {}, wait);
+const delay = Number(process.env.SMOKE_DELAY_MS || 0); // e.g. until a remote config has arrived
+setTimeout(() => http.get(target, (res) => res.resume()).on('error', () => {}), delay);
+setTimeout(() => {}, delay + wait);

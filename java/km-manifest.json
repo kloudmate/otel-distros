@@ -2,8 +2,8 @@
   "schema_version": 1,
   "distro": {
     "name": "kloudmate-java",
-    "version": "0.1.0",
-    "upstream": { "component": "opentelemetry-javaagent", "version": "2.29.0" }
+    "version": "0.2.0",
+    "upstream": { "component": "opentelemetry-javaagent", "version": "2.34.0" }
   },
   "runtime": { "name": "java", "version_range": ">=8" },
   "platforms": [
@@ -12,7 +12,7 @@
   ],
   "deny": {
     "exe": ["**/jdk*/bin/javac", "**/jshell", "**/bin/jcmd", "**/bin/jps", "**/bin/keytool"],
-    "cmdline": ["* -version", "*org.gradle.launcher.daemon*", "*org.gradle.wrapper.GradleWrapperMain*", "*org.codehaus.plexus.classworlds.launcher.Launcher*", "*sbt-launch*"],
+    "cmdline": ["* -version", "*org.gradle.launcher.daemon*", "*org.gradle.wrapper.GradleWrapperMain*", "*org.codehaus.plexus.classworlds.launcher.Launcher*", "*sbt-launch*", "* -Xverify:none*", "* -noverify*", "* -XX:-BytecodeVerificationRemote*"],
     "env_present": ["DD_TRACE_ENABLED", "NEW_RELIC_LICENSE_KEY", "ELASTIC_APM_SERVER_URL"]
   },
   "entry": {
@@ -21,8 +21,9 @@
     "reads_config_file": true
   },
   "artifacts": [
-    { "path": "opentelemetry-javaagent.jar", "sha256": "546531ca690a8603d2923b6db26bbda35c6409327b1e610430ae33c2f8f68050" },
-    { "path": "kloudmate-otel-extension.jar", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
+    { "path": "opentelemetry-javaagent.jar", "sha256": "da44154cea128257779c8a782b9651fd7c0c6aa177cd3810f9a867ac8509555d" },
+    { "path": "kloudmate-otel-extension.jar", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    { "path": "kloudmate-javaagent.jar", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
   ],
   "provenance": {
     "source_repo": "https://github.com/kloudmate/otel-distros",

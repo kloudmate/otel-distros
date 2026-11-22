@@ -21,6 +21,7 @@ final class KmStatus {
   static final String OK = "ok";
   static final String DEGRADED = "degraded";
   static final String DISABLED = "disabled";
+  static final String DENIED = "denied";
   static final String ERROR = "error";
 
   String serviceId;
@@ -36,6 +37,37 @@ final class KmStatus {
     }
   }
 
+  /** Records a KloudMate-managed setting the app replaced with its own value (kept sorted, no duplicates). */
+  void overridden(String key) {
+    if (key != null && !overriddenByApp.contains(key)) {
+      overriddenByApp.add(key);
+      java.util.Collections.sort(overriddenByApp);
+    }
+  }
+
+  private static final java.util.regex.Pattern SUBSTITUTION =
+      java.util.regex.Pattern.compile("\\$\\{(?:env:)?(OTEL_[A-Z0-9_]+)(?::-[^}]*)?\\}");
+
+  /**
+   * The {@code ${OTEL_*}} substitutions of a config file the app supplies itself (the variable is set in its
+   * environment), in file order. Those are the file's KloudMate values the app replaced. Never throws.
+   */
+  static List<String> appSubstitutions(String fileText, Map<String, String> env) {
+    List<String> out = new ArrayList<String>();
+    if (fileText == null || env == null) {
+      return out;
+    }
+    java.util.regex.Matcher m = SUBSTITUTION.matcher(fileText);
+    while (m.find()) {
+      String name = m.group(1);
+      String v = env.get(name);
+      if (!"OTEL_CONFIG_FILE".equals(name) && v != null && !v.trim().isEmpty() && !out.contains(name)) {
+        out.add(name);
+      }
+    }
+    return out;
+  }
+
   /** Records a worse result; the first reason of the worst result wins. */
   void fail(String result, String reason) {
     if (rank(result) > rank(this.result)) {
@@ -46,6 +78,9 @@ final class KmStatus {
 
   private static int rank(String r) {
     if (ERROR.equals(r)) {
+      return 4;
+    }
+    if (DENIED.equals(r)) {
       return 3;
     }
     if (DISABLED.equals(r)) {

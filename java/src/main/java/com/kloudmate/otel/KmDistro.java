@@ -63,6 +63,21 @@ final class KmDistro {
     }
   }
 
+  /** A mutable copy of a YAML mapping; an empty one for null; null when the value isn't a mapping. */
+  static java.util.Map<String, Object> mapCopy(Object v) {
+    java.util.Map<String, Object> out = new java.util.LinkedHashMap<String, Object>();
+    if (v == null) {
+      return out;
+    }
+    if (!(v instanceof java.util.Map)) {
+      return null;
+    }
+    for (java.util.Map.Entry<?, ?> e : ((java.util.Map<?, ?>) v).entrySet()) {
+      out.put(String.valueOf(e.getKey()), e.getValue());
+    }
+    return out;
+  }
+
   static boolean notBlank(String s) {
     return s != null && !s.trim().isEmpty();
   }

@@ -25,10 +25,10 @@ conventions. To send data somewhere else, change the endpoint. There's nothing t
 
 | Language | How it loads | Built on (upstream) | Minimum runtime | Platforms | Status | Docs |
 | --- | --- | --- | --- | --- | --- | --- |
-| Java | Extension jar for the OpenTelemetry Java agent | `opentelemetry-javaagent` 2.29.0 | Java 8 | Linux x86-64, arm64 (any JVM vendor) | **Preview (0.1.0)** | [java/](java/) |
-| Python | Distro package (`opentelemetry_distro` entry point) + `sitecustomize` bootstrap | `opentelemetry-sdk` 1.43.0, `opentelemetry-instrumentation` 0.64b0 | CPython 3.10 | Linux x86-64, arm64 (glibc) | **Preview (0.1.0)** | [python/](python/) |
-| Node.js | `--require` / `--import` register hook | `@opentelemetry/auto-instrumentations-node` 0.77.0, `sdk-node` 0.219.0 | Node.js 18.19 or 20.6 | Linux x86-64, arm64 | **Preview (0.1.0)** | [nodejs/](nodejs/) |
-| .NET | Plugin for OpenTelemetry .NET automatic instrumentation | `opentelemetry-dotnet-instrumentation` 1.15.0 | .NET 8 (.NET Framework 4.6.2 on Windows: built, not yet tested) | Linux x86-64, arm64 (glibc) | **Preview (0.1.0)** | [dotnet/](dotnet/) |
+| Java | Extension jar for the OpenTelemetry Java agent | `opentelemetry-javaagent` 2.34.0 | Java 8 | Linux x86-64, arm64 (any JVM vendor) | **Preview (0.2.0)** | [java/](java/) |
+| Python | Distro package (`opentelemetry_distro` entry point) + `sitecustomize` bootstrap | `opentelemetry-sdk` 1.45.2, `opentelemetry-instrumentation` 0.66b2 | CPython 3.10 | Linux x86-64, arm64 (glibc) | **Preview (0.2.0)** | [python/](python/) |
+| Node.js | `--require` / `--import` register hook | `@opentelemetry/auto-instrumentations-node` 0.81.2, `sdk-node` 0.223.2 | Node.js 18.19 or 20.6 | Linux x86-64, arm64 | **Preview (0.2.0)** | [nodejs/](nodejs/) |
+| .NET | Plugin for OpenTelemetry .NET automatic instrumentation | `opentelemetry-dotnet-instrumentation` 1.19.1 | .NET 8 | Linux x86-64, arm64 (glibc) | **Preview (0.2.0)** | [dotnet/](dotnet/) |
 | PHP | KloudMate PHP tracer, shipped with the KloudMate Agent | own tracer, OTLP output | PHP 7.0 | Linux x86-64, arm64 (glibc, musl) | Available via the agent | [php/](php/) |
 
 Minimum runtime is the oldest version the distribution is built and tested for. Inside that range, what gets
@@ -77,9 +77,13 @@ distribution keeps your values.
 | --- | --- | --- | --- |
 | `KM_SERVICE_ID` | env | unset | Value of `km.service_id`, if the resource doesn't already have one |
 | `KM_SDK_STATUS_DIR` | env | `/run/kmagent/sdk-status` | Where the startup status file is written (only if the directory exists) |
+| `KM_OTLP_SOCKET` | env | unset | The agent's OTLP/gRPC Unix socket; see `agent.otlp_socket` |
+| `KM_OPAMP_ENDPOINT` | env | unset | The agent's OpAMP endpoint (HTTP); see `agent.opamp_endpoint` |
+| `KM_OPAMP_POLL_INTERVAL` | env | `30` | Seconds between OpAMP messages |
 | `distribution.kloudmate.service_id` | config file | unset | Same as `KM_SERVICE_ID`; takes precedence over it |
 | `distribution.kloudmate.agent.otlp_endpoint` | config file | `http://127.0.0.1:4318` | Endpoint used for exporters that don't set their own |
-| `distribution.kloudmate.agent.otlp_socket` | config file | unset | Unix socket of the local agent, used first where the language's exporter supports it |
+| `distribution.kloudmate.agent.otlp_socket` | config file | unset | The agent's OTLP/gRPC Unix socket, used first where the language supports it ([rules](contract/README.md#the-agents-socket)); takes precedence over `KM_OTLP_SOCKET` |
+| `distribution.kloudmate.agent.opamp_endpoint` | config file | unset | The agent's OpAMP endpoint, such as `http://127.0.0.1:4320/v1/opamp`: health, status and live settings ([remote configuration](contract/README.md#4-remote-configuration)); takes precedence over `KM_OPAMP_ENDPOINT` |
 | `distribution.kloudmate.runtime_metrics.profile` | config file | `standard` | `standard`, `extended` or `off` |
 | `distribution.kloudmate.status_dir` | config file | see `KM_SDK_STATUS_DIR` | Where the startup status file is written |
 
@@ -149,6 +153,9 @@ To release a language:
 It builds with the language's `release.sh`, checks the manifest and the checksums, and publishes the GitHub
 release. Once the repository is public, it also attaches build provenance.
 
+Kubernetes images (`ghcr.io/kloudmate/otel-distro-<language>`) are built from the same release by the **images**
+workflow, which tests each image and pushes it only when asked. See [images/](images/).
+
 ## Building and testing
 
 | Language | Build | Test | Requires |
@@ -158,12 +165,15 @@ release. Once the repository is public, it also attaches build provenance.
 | Node.js | `nodejs/release.sh` | `npm test` and `nodejs/smoke/run.sh` | Node.js 18.19+ with npm, Go (smoke sink); Docker optional |
 | .NET | `dotnet/release.sh` | `dotnet/smoke/run.sh` | Docker (the .NET SDK runs in a container), Go (smoke sink) |
 
-The smoke tests run a sample app against [`smoke/otlpsink`](smoke/otlpsink), a small local OTLP/HTTP receiver. They
-check three things:
+The smoke tests run a sample app against [`smoke/otlpsink`](smoke/otlpsink), a small local OTLP receiver (HTTP, and
+gRPC on a Unix socket like the agent's). They check:
 
 - the KloudMate defaults and resource attributes;
 - that the app's own OpenTelemetry settings still win;
-- that the config file is read.
+- that the config file is read;
+- export over the agent's socket, where the language supports it.
+
+`images/test.sh <language>` runs the same app from each Kubernetes image.
 
 ## Contributing
 

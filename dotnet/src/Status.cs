@@ -16,14 +16,50 @@ namespace KloudMate.OpenTelemetry
         };
 
         private readonly List<KeyValuePair<string, string[]>> effective = new List<KeyValuePair<string, string[]>>();
+        private readonly List<string> overriddenByApp = new List<string>();
 
         internal string? ServiceId { get; set; }
+        internal string ConfigHash { get; set; } = string.Empty;
         internal string Result { get; private set; } = "ok";
         internal string Reason { get; private set; } = string.Empty;
 
         internal void Put(string key, string? value, string origin)
         {
             if (value != null) effective.Add(new KeyValuePair<string, string[]>(key, new[] { value, origin }));
+        }
+
+        /// <summary>Removes every value recorded for key.</summary>
+        internal void Remove(string key) => effective.RemoveAll(e => e.Key == key);
+
+        /// <summary>A KloudMate-managed setting the app replaced with its own value (sorted, no duplicates).</summary>
+        internal void Overridden(string key)
+        {
+            if (!overriddenByApp.Contains(key))
+            {
+                overriddenByApp.Add(key);
+                overriddenByApp.Sort(StringComparer.Ordinal);
+            }
+        }
+
+        internal IReadOnlyList<string> OverriddenByApp => overriddenByApp;
+
+        private static readonly System.Text.RegularExpressions.Regex Substitution =
+            new System.Text.RegularExpressions.Regex(@"\$\{(?:env:)?(OTEL_[A-Z0-9_]+)(?::-[^}]*)?\}");
+
+        /// <summary>
+        /// The ${OTEL_*} substitutions of a config file the app supplies itself (set in its environment), in file
+        /// order: the file's KloudMate values the app replaced.
+        /// </summary>
+        internal static List<string> AppSubstitutions(string? text)
+        {
+            var list = new List<string>();
+            if (text == null) return list;
+            foreach (System.Text.RegularExpressions.Match m in Substitution.Matches(text))
+            {
+                var name = m.Groups[1].Value;
+                if (name != "OTEL_CONFIG_FILE" && Env.IsSet(name) && !list.Contains(name)) list.Add(name);
+            }
+            return list;
         }
 
         internal void Fail(string result, string reason)
@@ -66,14 +102,20 @@ namespace KloudMate.OpenTelemetry
             b.Append(",\"distro\":{\"name\":").Append(Q(Distro.Name)).Append(",\"version\":").Append(Q(Distro.Version)).Append('}');
             b.Append(",\"result\":").Append(Q(Result)).Append(",\"reason\":").Append(Q(Reason));
             b.Append(",\"started_at\":").Append(Q(now)).Append(",\"heartbeat_at\":").Append(Q(now));
-            b.Append(",\"config_hash\":\"\",\"effective_config\":{");
+            b.Append(",\"config_hash\":").Append(Q(ConfigHash)).Append(",\"effective_config\":{");
             for (var i = 0; i < effective.Count; i++)
             {
                 if (i > 0) b.Append(',');
                 b.Append(Q(effective[i].Key)).Append(":{\"value\":").Append(Q(effective[i].Value[0]))
                  .Append(",\"origin\":").Append(Q(effective[i].Value[1])).Append('}');
             }
-            b.Append("},\"overridden_by_app\":[],\"instrumentations\":[]");
+            b.Append("},\"overridden_by_app\":[");
+            for (var i = 0; i < overriddenByApp.Count; i++)
+            {
+                if (i > 0) b.Append(',');
+                b.Append(Q(overriddenByApp[i]));
+            }
+            b.Append("],\"instrumentations\":[]");
             b.Append(",\"runtime\":{\"name\":\"dotnet\",\"version\":").Append(Q(Environment.Version.ToString())).Append("}}\n");
             return b.ToString();
         }

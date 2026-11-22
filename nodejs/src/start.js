@@ -5,8 +5,8 @@
 
 const fs = require('fs');
 const crypto = require('crypto');
-const { Status, NAME, VERSION } = require('./status');
-const { settingsFromBlock, endpoint, resourceAttrFromEnv } = require('./settings');
+const { Status, NAME, VERSION, appSubstitutions, fileText } = require('./status');
+const { settingsFromBlock, endpoint, socketTarget, resourceAttrFromEnv } = require('./settings');
 
 const KM_SERVICE_ID = 'km.service_id';
 
@@ -14,14 +14,17 @@ const KM_SERVICE_ID = 'km.service_id';
 const appSet = new Set();
 
 function defaults(settings, fileMode) {
+  // Env mode prefers the agent's socket (OTLP/gRPC); a file names its own exporters.
+  const sock = fileMode ? undefined : socketTarget(settings);
   const d = {
     OTEL_TRACES_EXPORTER: 'otlp',
     OTEL_METRICS_EXPORTER: 'otlp',
     OTEL_LOGS_EXPORTER: 'otlp',
-    OTEL_EXPORTER_OTLP_PROTOCOL: 'http/protobuf',
+    OTEL_EXPORTER_OTLP_PROTOCOL: sock ? 'grpc' : 'http/protobuf',
     OTEL_PROPAGATORS: 'tracecontext,baggage',
   };
-  if (!fileMode) d.OTEL_EXPORTER_OTLP_ENDPOINT = endpoint(settings);
+  if (!fileMode) d.OTEL_EXPORTER_OTLP_ENDPOINT = sock || endpoint(settings);
+  if (sock) d.OTEL_EXPORTER_OTLP_INSECURE = 'true'; // no TLS on a local socket
   // Express 5 runs on `router`, which the express instrumentation already traces: router spans would
   // double every middleware. A runtime_metrics profile of off drops the runtime-node instrumentation.
   // Either applies only when the app sets neither instrumentation list.
@@ -85,7 +88,10 @@ function startEnv(api) {
   applyDefaults(d);
 
   const st = new Status();
-  for (const k of Object.keys(d)) st.put(k, process.env[k], appSet.has(k) ? 'app_env' : 'distro_default');
+  for (const k of Object.keys(d)) {
+    st.put(k, process.env[k], appSet.has(k) ? 'app_env' : 'distro_default');
+    if (appSet.has(k)) st.overridden(k);
+  }
   for (const k of ['OTEL_SERVICE_NAME', 'OTEL_TRACES_SAMPLER', 'OTEL_TRACES_SAMPLER_ARG']) {
     if (process.env[k]) st.put(k, process.env[k], 'app_env');
   }
@@ -109,6 +115,7 @@ function startEnv(api) {
   const before = api.metrics.getMeterProvider();
   const sdk = new NodeSDK({ instrumentations, resourceDetectors: [...getResourceDetectors(), kmDetector(attrs)] });
   sdk.start();
+  startOpamp(api, settings, st);
   releaseMeterProvider(api, before);
   return () => sdk.shutdown();
 }
@@ -145,10 +152,81 @@ function fileEndpoints(model, settings, st) {
   }
 }
 
+/**
+ * Adds resource attributes to a config model: telemetry.distro.* replace upstream's, any other key only when the
+ * file doesn't set it (km.service_id is never rewritten).
+ */
+function addResourceAttributes(model, attrs) {
+  model.resource = model.resource || {};
+  const distro = new Set(['telemetry.distro.name', 'telemetry.distro.version']);
+  const list = (Array.isArray(model.resource.attributes) ? model.resource.attributes : []).filter((a) => !(a && distro.has(a.name)));
+  for (const [name, value] of Object.entries(attrs)) {
+    if (!list.some((a) => a && a.name === name)) list.push({ name, value, type: 'string' });
+  }
+  model.resource.attributes = list;
+  return model;
+}
+
+const SIGNAL_EXPORTERS = {
+  TRACES: (m) => ((m.tracer_provider && m.tracer_provider.processors) || []).map((p) => (p && (p.batch || p.simple)) || {}),
+  METRICS: (m) => ((m.meter_provider && m.meter_provider.readers) || []).map((r) => (r && r.periodic) || {}),
+  LOGS: (m) => ((m.logger_provider && m.logger_provider.processors) || []).map((p) => (p && (p.batch || p.simple)) || {}),
+};
+
+/**
+ * Points every otlp_grpc exporter without an endpoint at the agent's socket (target is unix:///path), without TLS
+ * unless the file configures it. Returns the signals it filled.
+ */
+function fillGrpcSocket(model, target) {
+  const filled = [];
+  for (const [sig, holders] of Object.entries(SIGNAL_EXPORTERS)) {
+    for (const h of holders(model)) {
+      const exp = h.exporter;
+      if (!exp || typeof exp !== 'object' || !('otlp_grpc' in exp)) continue;
+      const g = exp.otlp_grpc && typeof exp.otlp_grpc === 'object' ? exp.otlp_grpc : {};
+      if (g.endpoint) continue;
+      g.endpoint = target;
+      if (!g.tls) g.tls = { insecure: true };
+      exp.otlp_grpc = g;
+      if (!filled.includes(sig)) filled.push(sig);
+    }
+  }
+  return filled;
+}
+
+/** Runs fn while the file config loader hands out models passed through customize; the loader is restored afterwards. */
+function withFileModel(customize, fn) {
+  let FileConfigFactory;
+  try {
+    ({ FileConfigFactory } = require('@opentelemetry/configuration/build/src/FileConfigFactory'));
+  } catch {
+    return fn();
+  }
+  const original = FileConfigFactory.prototype.getConfigModel;
+  FileConfigFactory.prototype.getConfigModel = function () {
+    const model = original.call(this);
+    try {
+      return customize(model);
+    } catch {
+      return model;
+    }
+  };
+  try {
+    return fn();
+  } finally {
+    FileConfigFactory.prototype.getConfigModel = original;
+  }
+}
+
 function startFile(api, file) {
   const st = new Status();
   st.configHash = fileHash(file);
   st.put('OTEL_CONFIG_FILE', file, 'app_env');
+  // Before the distro sets anything: every OTEL_* in the environment now is the app's.
+  for (const name of appSubstitutions(fileText(file), process.env)) {
+    st.put(name, process.env[name], 'app_env');
+    st.overridden(name);
+  }
   let model;
   try {
     model = require('@opentelemetry/configuration').createConfigFactory().getConfigModel();
@@ -158,8 +236,12 @@ function startFile(api, file) {
     return null; // upstream would also leave the SDK off
   }
   const settings = settingsFromBlock(model.distribution && model.distribution.kloudmate);
+  const sock = socketTarget(settings); // before the distro sets any OTLP variable
   applyDefaults(defaults(settings, true));
   fileEndpoints(model, settings, st);
+  if (sock) {
+    for (const sig of fillGrpcSocket(model, sock)) st.put(`OTEL_EXPORTER_OTLP_${sig}_ENDPOINT`, sock, 'distro_default');
+  }
   const fileAttrs = (model.resource && model.resource.attributes) || [];
   const fileId = fileAttrs.find((a) => a && a.name === KM_SERVICE_ID);
   st.serviceId = fileId ? String(fileId.value) : settings.serviceId;
@@ -170,13 +252,20 @@ function startFile(api, file) {
   foreignAgents(st);
 
   const { startNodeSDK } = require('@opentelemetry/sdk-node');
-  const { getNodeAutoInstrumentations, getResourceDetectors } = require('@opentelemetry/auto-instrumentations-node');
+  const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
   const instrumentations = getNodeAutoInstrumentations();
   st.instrumentations = instrumentations.map((i) => i.instrumentationName.replace('@opentelemetry/instrumentation-', ''));
   st.write(settings.statusDir);
 
   const before = api.metrics.getMeterProvider();
-  const sdk = startNodeSDK({ instrumentations, resourceDetectors: [...getResourceDetectors(), kmDetector(attrs)] });
+  // sdk-node 0.223 builds the resource from the file alone (resourceDetectors is ignored): add ours to the model,
+  // with the socket fill.
+  const customize = (m) => {
+    addResourceAttributes(m, attrs);
+    if (sock) fillGrpcSocket(m, sock);
+    return m;
+  };
+  const sdk = withFileModel(customize, () => startNodeSDK({ instrumentations }));
   // startNodeSDK (experimental) enables instrumentations before it sets the global MeterProvider, so they keep
   // a no-op meter; NodeSDK hands them the provider explicitly. Do the same.
   const mp = api.metrics.getMeterProvider();
@@ -189,8 +278,23 @@ function startFile(api, file) {
       }
     }
   }
+  startOpamp(api, settings, st);
   releaseMeterProvider(api, before);
   return () => sdk.shutdown();
+}
+
+/** The OpAMP client, when an endpoint is configured (specification §4). */
+function startOpamp(api, settings, st) {
+  if (!settings.opampEndpoint) return;
+  try {
+    let provider = api.trace.getTracerProvider();
+    if (provider && typeof provider.getDelegate === 'function') provider = provider.getDelegate();
+    const attrs = (provider && provider._resource && provider._resource.attributes) || {};
+    const serviceName = String(attrs['service.name'] || process.env.OTEL_SERVICE_NAME || 'unknown_service:node');
+    require('./opamp').start({ endpoint: settings.opampEndpoint, status: st, statusDir: settings.statusDir, serviceName });
+  } catch {
+    // OpAMP stays off; telemetry is unaffected
+  }
 }
 
 function start() {
@@ -229,4 +333,4 @@ function start() {
   process.on('SIGTERM', onTerm);
 }
 
-module.exports = { start, defaults, settingsFromBlock };
+module.exports = { addResourceAttributes, fillGrpcSocket, start, defaults, settingsFromBlock };

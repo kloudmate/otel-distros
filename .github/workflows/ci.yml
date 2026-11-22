@@ -1,0 +1,78 @@
+# Tests the distributions: manifest check, unit tests and the end-to-end smoke test, for one language or all of
+# them. Manual trigger only, and self-hosted only: nothing here uses GitHub-hosted minutes.
+name: ci
+
+on:
+  workflow_dispatch:
+    inputs:
+      language:
+        description: Distribution to test
+        required: true
+        type: choice
+        options: [all, java, python, nodejs, dotnet]
+        default: all
+      smoke:
+        description: Run the end-to-end smoke test as well as the unit tests
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ inputs.language }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.language }})
+    # Self-hosted only. The runner needs Docker (the .NET SDK runs in a container), curl, git and python3; the
+    # setup-* steps install Java, Python, Node and Go per run.
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      # The smoke tests listen on fixed local ports (4318, 14318, ...): one language at a time, so two runners on
+      # the same host never collide.
+      max-parallel: 1
+      matrix:
+        language: ${{ fromJSON(inputs.language == 'all' && '["java","python","nodejs","dotnet"]' || format('["{0}"]', inputs.language)) }}
+    env:
+      LANGUAGE: ${{ matrix.language }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - if: matrix.language == 'java'
+        uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - if: matrix.language == 'java'
+        uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.14.3' }
+      # Every language: the manifest check needs pip, which the self-hosted runner doesn't have.
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - if: matrix.language == 'nodejs'
+        uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - if: inputs.smoke
+        uses: actions/setup-go@v5
+        with: { go-version-file: smoke/otlpsink/go.mod, cache: false }
+
+      - name: Check the manifest
+        run: |
+          python -m pip install --quiet jsonschema==4.26.0
+          python -c 'import json,jsonschema,sys; jsonschema.Draft202012Validator(json.load(open(sys.argv[1])), format_checker=jsonschema.FormatChecker()).validate(json.load(open(sys.argv[2])))' \
+            manifest/km-manifest.schema.json "$LANGUAGE/km-manifest.json"
+
+      - name: Unit tests
+        run: |
+          case "$LANGUAGE" in
+            java)   (cd java && gradle --no-daemon test) ;;
+            python) python -m pip install --quiet -e python pytest && python -m pytest -q python/tests ;;
+            nodejs) (cd nodejs && npm ci --no-audit --no-fund && npm test) ;;
+            dotnet) dotnet/dotnet.sh build -c Release -o build/out ;;
+          esac
+
+      - name: Smoke test
+        if: inputs.smoke
+        run: "$LANGUAGE/smoke/run.sh"

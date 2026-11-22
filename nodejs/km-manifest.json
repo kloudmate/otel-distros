@@ -2,8 +2,8 @@
   "schema_version": 1,
   "distro": {
     "name": "kloudmate-nodejs",
-    "version": "0.1.0",
-    "upstream": { "component": "@opentelemetry/auto-instrumentations-node", "version": "0.77.0 (sdk-node 0.219.0)" }
+    "version": "0.2.0",
+    "upstream": { "component": "@opentelemetry/auto-instrumentations-node", "version": "0.81.2 (sdk-node 0.223.2)" }
   },
   "runtime": { "name": "nodejs", "version_range": "^18.19.0 || >=20.6.0" },
   "platforms": [
@@ -21,7 +21,7 @@
     "reads_config_file": false
   },
   "artifacts": [
-    { "path": "kloudmate-opentelemetry-node-0.1.0.tgz", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    { "path": "kloudmate-opentelemetry-node-0.2.0.tgz", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
     { "path": "package-lock.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
   ],
   "provenance": {

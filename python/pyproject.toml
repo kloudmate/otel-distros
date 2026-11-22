@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kloudmate-opentelemetry-distro"
-version = "0.1.0"
+version = "0.2.0"
 description = "KloudMate distribution of OpenTelemetry Python: upstream instrumentation with KloudMate defaults"
 readme = "README.md"
 license = "Apache-2.0"
@@ -12,13 +12,15 @@ requires-python = ">=3.10"
 # Upstream versions this release is tested with. Keep in step with
 # scripts/otel-agent-bundles/python/requirements.txt in km-agent.
 dependencies = [
-  "opentelemetry-api==1.43.0",
-  "opentelemetry-sdk[file-configuration]==1.43.0",
-  "opentelemetry-exporter-otlp-proto-http==1.43.0",
-  "opentelemetry-instrumentation==0.64b0",
-  "opentelemetry-instrumentation-system-metrics==0.64b0",
+  "opentelemetry-api==1.45.2",
+  "opentelemetry-sdk[file-configuration]==1.45.2",
+  # The config-file loader and SDK builder (opentelemetry.configuration), split out of the SDK in 1.45.
+  "opentelemetry-configuration==0.66b2",
+  "opentelemetry-exporter-otlp-proto-http==1.45.2",
+  "opentelemetry-instrumentation==0.66b2",
+  "opentelemetry-instrumentation-system-metrics==0.66b2",
   # Logs: attaches the stdlib logging handler in env and file mode (replaces the SDK's deprecated one).
-  "opentelemetry-instrumentation-logging==0.64b0",
+  "opentelemetry-instrumentation-logging==0.66b2",
 ]
 
 [project.urls]

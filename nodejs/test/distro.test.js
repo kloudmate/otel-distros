@@ -5,8 +5,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { defaults, settingsFromBlock } = require('../src/start');
-const { endpoint, resourceAttrFromEnv } = require('../src/settings');
+const net = require('net');
+
+const { defaults, fillGrpcSocket, settingsFromBlock } = require('../src/start');
+const { endpoint, resourceAttrFromEnv, socketTarget } = require('../src/settings');
 const { Status } = require('../src/status');
 
 function withEnv(env, fn) {
@@ -52,4 +54,83 @@ test('status: worst result wins, only into an existing dir', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'km-'));
   const doc = JSON.parse(fs.readFileSync(st.write(dir), 'utf8'));
   assert.deepStrictEqual([doc.result, doc.reason, doc.distro.name], ['degraded', 'foreign_agent:ddtrace', 'kloudmate-nodejs']);
+});
+
+test('status: overridden_by_app from file substitutions, sorted', () => {
+  const { appSubstitutions } = require('../src/status');
+  const text = 'value: ${OTEL_SERVICE_NAME:-orders}\nx: ${env:OTEL_EXPORTER_OTLP_ENDPOINT:-http://127.0.0.1:4318}\n' +
+    'y: ${OTEL_TRACES_SAMPLER_ARG:-1.0}\nz: ${OTEL_CONFIG_FILE}\nw: ${OTEL_SERVICE_NAME}\n';
+  const env = { OTEL_SERVICE_NAME: 'checkout', OTEL_EXPORTER_OTLP_ENDPOINT: ' ', OTEL_CONFIG_FILE: '/x' };
+  assert.deepStrictEqual(appSubstitutions(text, env), ['OTEL_SERVICE_NAME']);
+  assert.deepStrictEqual(appSubstitutions(null, env), []);
+  const st = new Status();
+  st.overridden('OTEL_SERVICE_NAME');
+  st.overridden('OTEL_EXPORTER_OTLP_ENDPOINT');
+  st.overridden('OTEL_SERVICE_NAME');
+  assert.deepStrictEqual(st.toJSON().overridden_by_app, ['OTEL_EXPORTER_OTLP_ENDPOINT', 'OTEL_SERVICE_NAME']);
+});
+
+test('file mode: resource attributes added to the model, km.service_id never rewritten', () => {
+  const { addResourceAttributes } = require('../src/start');
+  const m = { resource: { attributes: [{ name: 'service.name', value: 'web' }, { name: 'km.service_id', value: 'own' },
+    { name: 'telemetry.distro.name', value: 'opentelemetry-js' }] } };
+  addResourceAttributes(m, { 'km.service_id': 'systemd:x', 'telemetry.distro.name': 'kloudmate-nodejs', 'telemetry.distro.version': '0.2.0' });
+  const byName = Object.fromEntries(m.resource.attributes.map((a) => [a.name, a.value]));
+  assert.deepStrictEqual(byName, { 'service.name': 'web', 'km.service_id': 'own', 'telemetry.distro.name': 'kloudmate-nodejs', 'telemetry.distro.version': '0.2.0' });
+  assert.deepStrictEqual(addResourceAttributes({}, { a: '1' }).resource.attributes, [{ name: 'a', value: '1', type: 'string' }]);
+});
+
+async function withSocket(fn) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'km-sock-'));
+  const sock = path.join(dir, 'otlp.sock');
+  const srv = net.createServer().listen(sock);
+  await new Promise((r) => srv.once('listening', r));
+  try {
+    return fn(sock, dir);
+  } finally {
+    srv.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('socket: used when it exists and the app chose no transport', () => withSocket((sock, dir) => {
+  withEnv({ KM_OTLP_SOCKET: sock }, () => {
+    const d = defaults(settingsFromBlock(undefined), false);
+    assert.deepStrictEqual(
+      [d.OTEL_EXPORTER_OTLP_PROTOCOL, d.OTEL_EXPORTER_OTLP_ENDPOINT, d.OTEL_EXPORTER_OTLP_INSECURE],
+      ['grpc', `unix://${sock}`, 'true'],
+    );
+  });
+  // the block's path wins over KM_OTLP_SOCKET
+  withEnv({ KM_OTLP_SOCKET: '/nowhere.sock' }, () => {
+    assert.strictEqual(socketTarget(settingsFromBlock({ agent: { otlp_socket: sock } })), `unix://${sock}`);
+  });
+  for (const k of ['OTEL_EXPORTER_OTLP_ENDPOINT', 'OTEL_EXPORTER_OTLP_PROTOCOL', 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'OTEL_EXPORTER_OTLP_LOGS_PROTOCOL']) {
+    withEnv({ KM_OTLP_SOCKET: sock, [k]: 'x' }, () => assert.strictEqual(socketTarget(settingsFromBlock(undefined)), undefined, k));
+  }
+  const file = path.join(dir, 'plain');
+  fs.writeFileSync(file, '');
+  for (const p of [file, path.join(dir, 'missing.sock'), 'relative.sock']) {
+    withEnv({ KM_OTLP_SOCKET: p }, () => {
+      assert.strictEqual(socketTarget(settingsFromBlock(undefined)), undefined, p);
+      const d = defaults(settingsFromBlock(undefined), false);
+      assert.deepStrictEqual([d.OTEL_EXPORTER_OTLP_PROTOCOL, d.OTEL_EXPORTER_OTLP_ENDPOINT, d.OTEL_EXPORTER_OTLP_INSECURE], ['http/protobuf', 'http://127.0.0.1:4318', undefined]);
+    });
+  }
+  // file mode: the file names its exporters
+  withEnv({ KM_OTLP_SOCKET: sock }, () => assert.strictEqual(defaults(settingsFromBlock(undefined), true).OTEL_EXPORTER_OTLP_PROTOCOL, 'http/protobuf'));
+}));
+
+test('file mode: otlp_grpc exporters without an endpoint get the socket', () => {
+  const model = {
+    tracer_provider: { processors: [{ batch: { exporter: { otlp_grpc: null } } }, { simple: { exporter: { otlp_http: {} } } }] },
+    meter_provider: { readers: [{ periodic: { exporter: { otlp_grpc: { endpoint: 'http://collector:4317' } } } }] },
+    logger_provider: { processors: [{ batch: { exporter: { otlp_grpc: { tls: { ca_file: '/ca.pem' } } } } }] },
+  };
+  assert.deepStrictEqual(fillGrpcSocket(model, 'unix:///run/otlp.sock'), ['TRACES', 'LOGS']);
+  assert.deepStrictEqual(model.tracer_provider.processors[0].batch.exporter.otlp_grpc, { endpoint: 'unix:///run/otlp.sock', tls: { insecure: true } });
+  assert.deepStrictEqual(model.tracer_provider.processors[1].simple.exporter, { otlp_http: {} });
+  assert.strictEqual(model.meter_provider.readers[0].periodic.exporter.otlp_grpc.endpoint, 'http://collector:4317');
+  assert.deepStrictEqual(model.logger_provider.processors[0].batch.exporter.otlp_grpc.tls, { ca_file: '/ca.pem' });
+  assert.deepStrictEqual(fillGrpcSocket({}, 'unix:///x'), []);
 });

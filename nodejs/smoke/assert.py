@@ -31,6 +31,12 @@ st = c.status("appenv")
 if st:
     ep = st["effective_config"].get("OTEL_EXPORTER_OTLP_ENDPOINT", {})
     c.check(ep == {"value": "http://127.0.0.1:14318", "origin": "app_env"}, f"[appenv] endpoint effective config {ep}")
+    c.check(st["overridden_by_app"] == ["OTEL_EXPORTER_OTLP_ENDPOINT"], f"[appenv] overridden_by_app {st['overridden_by_app']}")
+
+# 4b. a config file whose ${OTEL_SERVICE_NAME} the app supplies
+st = c.status("file-app")
+if st:
+    c.check(st["overridden_by_app"] == ["OTEL_SERVICE_NAME"], f"[file-app] overridden_by_app {st['overridden_by_app']}")
 
 # 3. ESM
 c.common("esm", "esm", "smoke-esm", "systemd:smoke-esm.service")
@@ -41,12 +47,33 @@ st = c.status("file")
 c.check(st is not None and st["config_hash"].startswith("sha256:"), "[file] status with config_hash")
 if st:
     c.check(st["km.service_id"] == "systemd:smoke-file.service", "[file] status km.service_id from the block")
+    c.check(st["overridden_by_app"] == [], f"[file] overridden_by_app {st['overridden_by_app']}")
     tr = st["effective_config"].get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", {})
     c.check(tr == {"value": "http://127.0.0.1:24318/v1/traces", "origin": "distro_default"}, f"[file] traces endpoint filled {tr}")
     mt = st["effective_config"].get("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", {})
     c.check(mt == {"value": "http://127.0.0.1:24318/v1/metrics", "origin": "file"}, f"[file] metrics endpoint from the file {mt}")
 c.check(not any(r.get("service.name") == "smoke-file" for r in c.resources("default", "metrics")),
         "[file] no metrics leaked to the default endpoint")
+
+# 4c-4e. the agent's socket
+sock = "unix://" + os.path.join(work, "otlp.sock")
+c.common("socket", "socket", "smoke-socket", "systemd:smoke-socket.service")
+c.check(all(r["listener"].startswith("grpc+unix:") for r in c.records("socket")), "[socket] every request came over gRPC on the socket")
+st = c.status("socket")
+if st:
+    ec = st["effective_config"]
+    c.check(ec.get("OTEL_EXPORTER_OTLP_ENDPOINT") == {"value": sock, "origin": "distro_default"}, f"[socket] endpoint {ec.get('OTEL_EXPORTER_OTLP_ENDPOINT')}")
+    c.check(ec.get("OTEL_EXPORTER_OTLP_PROTOCOL") == {"value": "grpc", "origin": "distro_default"}, f"[socket] protocol {ec.get('OTEL_EXPORTER_OTLP_PROTOCOL')}")
+c.common("nosocket", "default", "smoke-nosocket", "systemd:smoke-nosocket.service")
+c.check(not any(r.get("service.name") == "smoke-app" for r in c.resources("socket", "traces")), "[appenv] the app's endpoint won over the socket")
+c.common("file-socket", "socket", "smoke-file-socket", "systemd:smoke-file-socket.service")
+st = c.status("file-socket")
+if st:
+    tr = st["effective_config"].get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", {})
+    c.check(tr == {"value": sock, "origin": "distro_default"}, f"[file-socket] traces endpoint {tr}")
+
+# 4f. OpAMP
+c.opamp("opamp", "smoke-opamp", "systemd:smoke-opamp.service")
 
 # 5. SIGTERM
 res = open(os.path.join(work, "sigterm.result")).read().strip()

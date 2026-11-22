@@ -5,11 +5,11 @@ KloudMate defaults, service identity and a startup health check. Instrumentation
 
 | | |
 | --- | --- |
-| Built on | `@opentelemetry/auto-instrumentations-node` 0.77.0, `@opentelemetry/sdk-node` 0.219.0 |
+| Built on | `@opentelemetry/auto-instrumentations-node` 0.81.2, `@opentelemetry/sdk-node` 0.223.2 |
 | Runtime | Node.js 18.19+ or 20.6+ (the upstream SDK's range) |
 | Module systems | CommonJS (`--require`) and ES modules (`--import`) |
 | Platforms | Linux x86-64, arm64 (pure JavaScript, no native addons) |
-| Status | Preview (0.1.0) |
+| Status | Preview (0.2.0) |
 
 ## How it loads
 
@@ -33,8 +33,8 @@ Each default applies only when you haven't set the variable yourself.
 
 | Variable | Upstream default | KloudMate default |
 | --- | --- | --- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | `http://127.0.0.1:4318` |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | `http/protobuf` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | `http://127.0.0.1:4318`; `unix://<socket>` over the agent's socket ([rules](../contract/README.md#the-agents-socket)) |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | `http/protobuf`; `grpc` over the agent's socket |
 | `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` / `OTEL_LOGS_EXPORTER` | `otlp` | `otlp` |
 | `OTEL_PROPAGATORS` | `tracecontext,baggage` | `tracecontext,baggage` |
 | `OTEL_NODE_DISABLED_INSTRUMENTATIONS` | `fs`, `host-metrics` off | also `router`, when you set neither instrumentation list. Express 5 runs on `router`, and the express instrumentation already traces it, so router spans would double every middleware |
@@ -53,7 +53,8 @@ Other behaviour, compared with upstream `register`:
 ## Config file (opt-in)
 
 Upstream reads `OTEL_CONFIG_FILE` only through `startNodeSDK`, which is still experimental: it doesn't apply
-`sampler` settings yet, and in 0.219.0 it drops the metric exporter's `endpoint`. The KloudMate Agent therefore
+`sampler` settings yet, and in 0.223.2 it drops the metric exporter's `endpoint` and builds the resource from the
+file alone (resource detectors run only when the file lists them under `resource.detection/development`). The KloudMate Agent therefore
 keeps Node.js on environment variables (`reads_config_file: false` in the manifest). If you set `OTEL_CONFIG_FILE`
 yourself, the distribution:
 
@@ -79,10 +80,9 @@ file.
 
 ## Limitations
 
-- The upstream OTLP exporters take no Unix-socket path from configuration, so `agent.otlp_socket` is skipped and
-  TCP is used.
-- `overridden_by_app` is always empty in this release.
-- Planned: remote configuration over OpAMP, and optional continuous profiling.
+- Over OpAMP ([remote configuration](../contract/README.md#4-remote-configuration)), `sampling_rate` and
+  `send_traces` apply live; the other remote keys are reported as not applied live.
+- Planned: optional continuous profiling.
 
 ## Development
 
@@ -92,11 +92,11 @@ smoke/run.sh             # end-to-end against a local OTLP sink (Go; Docker opti
 release.sh               # npm tarball, package-lock.json, km-manifest.json, SHA256SUMS
 ```
 
-The smoke test runs six scenarios:
+The smoke test runs these scenarios:
 
 1. CommonJS defaults;
-2. your own `OTEL_*` settings win;
+2. your own `OTEL_*` settings win, over the agent's socket too;
 3. ES modules;
-4. a config file;
+4. a config file, and the agent's socket with and without a config file (a missing socket falls back to TCP);
 5. SIGTERM still exits and flushes;
 6. Node.js 16 (the app runs, and the status file says `node_too_old`).

@@ -27,6 +27,14 @@ Status.prototype.put = function (key, value, origin) {
   if (value !== undefined && value !== null) this.effective[key] = { value: String(value), origin: origin };
 };
 
+// A KloudMate-managed setting the app replaced with its own value (sorted, no duplicates).
+Status.prototype.overridden = function (key) {
+  if (key && this.overriddenByApp.indexOf(key) < 0) {
+    this.overriddenByApp.push(key);
+    this.overriddenByApp.sort();
+  }
+};
+
 Status.prototype.fail = function (result, reason) {
   var cur = ORDER[this.result] === undefined ? 0 : ORDER[this.result];
   var next = ORDER[result] === undefined ? 3 : ORDER[result];
@@ -68,6 +76,30 @@ Status.prototype.write = function (dir) {
   }
 };
 
+// The ${OTEL_*} substitutions of a config file that the app supplies itself (set in env), in file order: the
+// file's KloudMate values the app replaced.
+function appSubstitutions(text, env) {
+  var out = [];
+  if (!text || !env) return out;
+  var re = /\$\{(?:env:)?(OTEL_[A-Z0-9_]+)(?::-[^}]*)?\}/g;
+  var m;
+  while ((m = re.exec(text)) !== null) {
+    var name = m[1];
+    var v = env[name];
+    if (name !== 'OTEL_CONFIG_FILE' && v !== undefined && String(v).trim() !== '' && out.indexOf(name) < 0) out.push(name);
+  }
+  return out;
+}
+
+function fileText(p) {
+  try {
+    if (fs.statSync(p).size > 1024 * 1024) return null;
+    return fs.readFileSync(p, 'utf8');
+  } catch (e) {
+    return null;
+  }
+}
+
 function writeEarly(result, reason) {
   var st = new Status();
   st.serviceId = process.env.KM_SERVICE_ID || '';
@@ -75,4 +107,12 @@ function writeEarly(result, reason) {
   return st.write(statusDir(null));
 }
 
-module.exports = { Status: Status, writeEarly: writeEarly, statusDir: statusDir, NAME: NAME, VERSION: VERSION };
+module.exports = {
+  Status: Status,
+  writeEarly: writeEarly,
+  statusDir: statusDir,
+  appSubstitutions: appSubstitutions,
+  fileText: fileText,
+  NAME: NAME,
+  VERSION: VERSION
+};

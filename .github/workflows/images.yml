@@ -1,0 +1,70 @@
+# Builds one language's Kubernetes image (images/build.sh), tests it end to end (images/test.sh), and pushes the
+# multi-arch image to GHCR only when asked. Manual trigger only, and self-hosted only: nothing here uses
+# GitHub-hosted minutes.
+name: images
+
+on:
+  workflow_dispatch:
+    inputs:
+      language:
+        description: Image to build
+        required: true
+        type: choice
+        options: [java, python, nodejs, dotnet]
+      push:
+        description: Push ghcr.io/kloudmate/otel-distro-<language>:<version> (amd64 and arm64) after the test passes
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write       # only used when push is on
+
+# The test listens on 127.0.0.1:4318: one image at a time, so two runs on the same host never collide.
+concurrency:
+  group: images
+  cancel-in-progress: false
+
+jobs:
+  image:
+    # Self-hosted only. The runner needs Docker 28+ with buildx (image mounts in the test; QEMU is not needed, the
+    # build only copies files), curl, unzip and python3; the setup-* steps install Java, Python, Node and Go.
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 60
+    env:
+      LANGUAGE: ${{ inputs.language }}
+      TEST_TAG: km-ci/otel-distro-${{ inputs.language }}:${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - if: inputs.language == 'java'
+        uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - if: inputs.language == 'java'
+        uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.14.3' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - if: inputs.language == 'nodejs'
+        uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - uses: actions/setup-go@v5
+        with: { go-version-file: smoke/otlpsink/go.mod, cache: false }
+
+      - name: Build for this machine and test
+        run: |
+          images/build.sh "$LANGUAGE" --tag "$TEST_TAG" --load
+          images/test.sh "$LANGUAGE" "$TEST_TAG"
+
+      - name: Push (amd64 and arm64)
+        if: inputs.push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          images/build.sh "$LANGUAGE" --push
+          docker logout ghcr.io
+
+      - name: Remove the test image
+        if: always()
+        run: docker image rm -f "$TEST_TAG" >/dev/null 2>&1 || true

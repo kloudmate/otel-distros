@@ -18,6 +18,7 @@ if st:
     c.check(st["result"] == "ok", f"[defaults] status result={st['result']!r}")
     c.check(st["distro"]["name"] == "kloudmate-java", "[defaults] status distro.name")
     c.check(st["km.service_id"] == "systemd:smoke.service", "[defaults] status km.service_id")
+    c.check(st["overridden_by_app"] == [], f"[defaults] overridden_by_app {st['overridden_by_app']}")
     ep = st["effective_config"].get("OTEL_EXPORTER_OTLP_ENDPOINT", {})
     c.check(ep == {"value": "http://127.0.0.1:4318", "origin": "distro_default"}, f"[defaults] endpoint effective config {ep}")
 
@@ -29,6 +30,7 @@ st = c.status("appenv")
 if st:
     ep = st["effective_config"].get("OTEL_EXPORTER_OTLP_ENDPOINT", {})
     c.check(ep == {"value": "http://127.0.0.1:14318", "origin": "app_env"}, f"[appenv] endpoint effective config {ep}")
+    c.check("OTEL_EXPORTER_OTLP_ENDPOINT" in st["overridden_by_app"], f"[appenv] overridden_by_app {st['overridden_by_app']}")
 
 # 3. declarative config file
 c.common("file", "file", "smoke-file", "systemd:smoke-file.service")
@@ -38,5 +40,56 @@ c.check(st is not None, "[file] status file written to distribution.kloudmate.st
 if st:
     c.check(st["config_hash"].startswith("sha256:"), "[file] status config_hash")
     c.check(st["km.service_id"] == "systemd:smoke-file.service", "[file] status km.service_id from the block")
+
+# 4-6. a JVM without bytecode verification
+def spans_of(service):
+    return [r for r in c.resources("noverify", "traces") if r.get("service.name") == service]
+
+
+st = c.status("noverify")
+c.check(st is not None, "[noverify] status file written")
+if st:
+    c.check(st["result"] == "denied" and st["reason"] == "bytecode_verification_off",
+            f"[noverify] status {st['result']!r}/{st['reason']!r}")
+    de = st["effective_config"].get("OTEL_INSTRUMENTATION_COMMON_DEFAULT_ENABLED", {})
+    c.check(de == {"value": "false", "origin": "distro_default"}, f"[noverify] instrumentation off by default {de}")
+c.check(not spans_of("smoke-noverify"), "[noverify] no spans: the agent rewrote nothing")
+
+st = c.status("noverify-forced")
+if st:
+    c.check(st["result"] == "degraded" and st["reason"] == "bytecode_verification_off",
+            f"[noverify-forced] status {st['result']!r}/{st['reason']!r}")
+c.check(bool(spans_of("smoke-noverify-forced")), "[noverify-forced] the app's own setting keeps instrumentation on")
+
+st = c.status("noverify-file")
+c.check(st is not None, "[noverify-file] status file written")
+if st:
+    c.check(st["result"] == "denied" and st["reason"] == "bytecode_verification_off",
+            f"[noverify-file] status {st['result']!r}/{st['reason']!r}")
+    c.check(st["overridden_by_app"] == ["OTEL_SERVICE_NAME"], f"[noverify-file] overridden_by_app {st['overridden_by_app']}")
+c.check(not spans_of("smoke-noverify-file"), "[noverify-file] no spans under a config file either")
+
+# 7-9. kloudmate-javaagent.jar
+c.common("kmagent", "default", "smoke-kmagent", "systemd:smoke-kmagent.service")
+c.common("kmagent-file", "default", "smoke-attach-file", "proc:smoke-attach")
+c.check(any(r.get("deployment.environment.name") == "attach" for r in c.resources("default", "traces")
+            if r.get("service.name") == "smoke-attach-file"), "[kmagent-file] resource attributes from the file")
+st = c.status("attach")
+c.check(st is not None, "[kmagent-file] status written to the file's status_dir")
+if st:
+    ec = st["effective_config"]
+    c.check(ec.get("OTEL_SERVICE_NAME", {}).get("origin") == "file", f"[kmagent-file] service name from the file {ec.get('OTEL_SERVICE_NAME')}")
+    c.check(ec.get("OTEL_EXPORTER_OTLP_ENDPOINT", {}).get("origin") == "distro_default", "[kmagent-file] endpoint still a KloudMate default")
+    c.check(st["config_hash"].startswith("sha256:"), "[kmagent-file] config_hash of the file")
+c.common("kmagent-file-app", "default", "smoke-attach-app", "proc:smoke-attach")
+st = c.status("attach-app")
+if st:
+    c.check(st["overridden_by_app"] == ["OTEL_SERVICE_NAME"], f"[kmagent-file-app] overridden_by_app {st['overridden_by_app']}")
+c.common("runtime-attach", "default", "smoke-runtime-attach", "proc:smoke-runtime")
+st = c.status("runtime")
+c.check(st is not None and st["result"] == "ok", f"[runtime-attach] status {st and (st['result'], st['reason'])}")
+
+# 10. OpAMP
+c.opamp("opamp", "smoke-opamp", "systemd:smoke-opamp.service")
 
 c.done()

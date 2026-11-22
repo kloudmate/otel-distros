@@ -21,6 +21,9 @@ if st:
     c.check(st["km.service_id"] == "systemd:smoke.service", "[defaults] status km.service_id")
     ep = st["effective_config"].get("OTEL_EXPORTER_OTLP_ENDPOINT", {})
     c.check(ep == {"value": "http://127.0.0.1:4318", "origin": "distro_default"}, f"[defaults] endpoint effective config {ep}")
+    c.check(st["overridden_by_app"] == [], f"[defaults] overridden_by_app {st['overridden_by_app']}")
+    c.check("urllib" in st["instrumentations"] and "system_metrics" in st["instrumentations"],
+            f"[defaults] instrumentations listed: {st['instrumentations']}")
     pr = st["effective_config"].get("OTEL_EXPORTER_OTLP_PROTOCOL", {})
     c.check(pr == {"value": "http/protobuf", "origin": "distro_default"}, f"[defaults] protocol effective config {pr}")
 
@@ -33,6 +36,7 @@ if st:
     ep = st["effective_config"].get("OTEL_EXPORTER_OTLP_ENDPOINT", {})
     c.check(ep == {"value": "http://127.0.0.1:14318", "origin": "app_env"}, f"[appenv] endpoint effective config {ep}")
     c.check(st["km.service_id"] == "app-own", "[appenv] status km.service_id is the app's")
+    c.check(st["overridden_by_app"] == ["OTEL_EXPORTER_OTLP_ENDPOINT"], f"[appenv] overridden_by_app {st['overridden_by_app']}")
 
 # 3. declarative config file
 c.common("file", "file", "smoke-file", "systemd:smoke-file.service", SIGNALS)
@@ -42,11 +46,37 @@ if st:
     c.check(st["result"] == "ok", f"[file] status result={st['result']!r} reason={st['reason']!r}")
     c.check(st["config_hash"].startswith("sha256:"), "[file] status config_hash")
     c.check(st["km.service_id"] == "systemd:smoke-file.service", "[file] status km.service_id from the block")
+    c.check(st["overridden_by_app"] == [], f"[file] overridden_by_app {st['overridden_by_app']}")
+    c.check("urllib" in st["instrumentations"], f"[file] instrumentations listed: {st['instrumentations']}")
+st = c.status("file-app")
+if st:
+    c.check(st["overridden_by_app"] == ["OTEL_SERVICE_NAME"], f"[file-app] overridden_by_app {st['overridden_by_app']}")
+    sn = st["effective_config"].get("OTEL_SERVICE_NAME", {})
+    c.check(sn == {"value": "smoke-file-app", "origin": "app_env"}, f"[file-app] service name effective config {sn}")
 
 # 4. broken config file
 st = c.status("broken")
 c.check(st is not None and st["result"] == "error" and st["reason"] == "config_parse_error",
         f"[broken] status error/config_parse_error: {st and (st['result'], st['reason'])}")
+
+# 6. the agent's socket
+sock = "unix://" + os.path.join(sys.argv[1], "otlp.sock")
+c.common("socket", "socket", "smoke-socket", "systemd:smoke-socket.service", SIGNALS)
+c.check(all(r["listener"].startswith("grpc+unix:") for r in c.records("socket")), "[socket] every request came over gRPC on the socket")
+st = c.status("socket")
+if st:
+    ec = st["effective_config"]
+    c.check(ec.get("OTEL_EXPORTER_OTLP_ENDPOINT") == {"value": sock, "origin": "distro_default"}, f"[socket] endpoint {ec.get('OTEL_EXPORTER_OTLP_ENDPOINT')}")
+    c.check(ec.get("OTEL_EXPORTER_OTLP_PROTOCOL") == {"value": "grpc", "origin": "distro_default"}, f"[socket] protocol {ec.get('OTEL_EXPORTER_OTLP_PROTOCOL')}")
+c.common("socket-nogrpc", "default", "smoke-nogrpc", "systemd:smoke-nogrpc.service", SIGNALS)
+c.common("file-socket", "socket", "smoke-file-socket", "systemd:smoke-file-socket.service", SIGNALS)
+st = c.status("file-socket")
+if st:
+    lg = st["effective_config"].get("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", {})
+    c.check(lg == {"value": sock, "origin": "distro_default"}, f"[file-socket] logs endpoint {lg}")
+
+# 7. OpAMP
+c.opamp("opamp", "smoke-opamp", "systemd:smoke-opamp.service")
 
 # 5. Python 2.7 (when Docker was available)
 if os.path.isdir(os.path.join(sys.argv[1], "status-py27")):

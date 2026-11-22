@@ -1,18 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
     KloudMate plugin for OpenTelemetry .NET automatic instrumentation (OTEL_DOTNET_AUTO_PLUGINS).
-    netstandard2.0: one assembly for .NET 8+ and .NET Framework 4.6.2+.
-    OpenTelemetry packages are compile-only: upstream loads its own copies, and a plugin must reference
-    exactly the versions upstream bundles (1.15.3 for opentelemetry-dotnet-instrumentation 1.15.0).
+    net8.0: the plugin API (OpenTelemetry.AutoInstrumentation.PluginApi) targets net8.0 and net462; Linux runs
+    net8.0 and later.
+    Every OpenTelemetry package is compile-only: upstream loads its own copies, and a plugin must reference
+    exactly the versions upstream bundles (PluginApi 1.19.1 and OpenTelemetry 1.20.1 for
+    opentelemetry-dotnet-instrumentation 1.19.1).
   -->
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <AssemblyName>KloudMate.OpenTelemetry</AssemblyName>
     <RootNamespace>KloudMate.OpenTelemetry</RootNamespace>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
     <PathMap>$(MSBuildProjectDirectory)=/src</PathMap>
@@ -22,8 +24,9 @@
     <Product>KloudMate OpenTelemetry .NET distribution</Product>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="OpenTelemetry" Version="1.15.3" ExcludeAssets="runtime" PrivateAssets="all" />
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="OpenTelemetry.AutoInstrumentation.PluginApi" Version="1.19.1" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="OpenTelemetry" Version="1.20.1" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.20.1" ExcludeAssets="runtime" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="smoke/**;test/**" />

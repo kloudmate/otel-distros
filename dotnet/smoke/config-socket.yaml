@@ -1,0 +1,31 @@
+# Upstream's file mode with the agent's socket: the otlp_grpc exporters have no endpoint, so the plugin points them
+# at distribution.kloudmate.agent.otlp_socket (OTLP/gRPC).
+file_format: "1.0"
+resource:
+  attributes:
+    - name: service.name
+      value: smoke-file-socket
+tracer_provider:
+  processors:
+    - batch:
+        schedule_delay: 200
+        exporter:
+          otlp_grpc: {}
+meter_provider:
+  readers:
+    - periodic:
+        interval: 1000
+        exporter:
+          otlp_grpc: {}
+instrumentation/development:
+  dotnet:
+    traces:
+      httpclient:
+plugins/development:
+  plugins_list: "KloudMate.OpenTelemetry.Plugin, KloudMate.OpenTelemetry"
+distribution:
+  kloudmate:
+    service_id: "systemd:smoke-file-socket.service"
+    agent:
+      otlp_socket: /km/otlp.sock
+    status_dir: ${KM_SDK_STATUS_DIR}

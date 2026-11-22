@@ -23,6 +23,13 @@ cp -r "$ROOT/nodejs/register.js" "$ROOT/nodejs/register.mjs" "$ROOT/nodejs/src" 
 "$WORK/otlpsink" -listen 127.0.0.1:14318 -out "$WORK/app.jsonl" 2>"$WORK/sink-app.log" & PIDS+=($!)
 "$WORK/otlpsink" -listen 127.0.0.1:24318 -out "$WORK/file.jsonl" 2>"$WORK/sink-file.log" & PIDS+=($!)
 "$WORK/otlpsink" -listen 127.0.0.1:34318 -out "$WORK/esm.jsonl" 2>"$WORK/sink-esm.log" & PIDS+=($!)
+# The KloudMate Agent's socket speaks OTLP/gRPC.
+SOCK="$WORK/otlp.sock"
+"$WORK/otlpsink" -listen "grpc+unix:$SOCK" -out "$WORK/socket.jsonl" 2>"$WORK/sink-socket.log" & PIDS+=($!)
+# A stand-in for the KloudMate Agent's OpAMP server, serving one remote config.
+(cd "$ROOT/smoke/opampsink" && go build -o "$WORK/opampsink" .)
+printf '{"sampling_rate": 0, "logging_level": "debug"}' > "$WORK/remote.json"
+"$WORK/opampsink" -listen 127.0.0.1:4320 -out "$WORK/opamp.jsonl" -remote "$WORK/remote.json" 2>"$WORK/opamp.log" & PIDS+=($!)
 sleep 1
 
 run_app() {
@@ -37,8 +44,8 @@ REQ="--require $bundle/register.js"
 echo ">>> 1. CommonJS, KloudMate defaults"
 run_app defaults "$REQ" "$HERE/app.cjs" KM_SERVICE_ID=systemd:smoke.service OTEL_SERVICE_NAME=smoke-defaults
 
-echo ">>> 2. the app's own OTEL_* win"
-run_app appenv "$REQ" "$HERE/app.cjs" KM_SERVICE_ID=systemd:smoke.service OTEL_SERVICE_NAME=smoke-app \
+echo ">>> 2. the app's own OTEL_* win, over the agent's socket too"
+run_app appenv "$REQ" "$HERE/app.cjs" KM_SERVICE_ID=systemd:smoke.service OTEL_SERVICE_NAME=smoke-app KM_OTLP_SOCKET="$SOCK" \
   OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:14318 \
   OTEL_RESOURCE_ATTRIBUTES=km.service_id=app-own,deployment.environment.name=prod \
   SMOKE_TARGET=http://127.0.0.1:14318/health
@@ -50,6 +57,25 @@ run_app esm "--import $bundle/register.mjs" "$HERE/app.mjs" KM_SERVICE_ID=system
 echo ">>> 4. config file (opt-in, experimental upstream)"
 run_app file "$REQ" "$HERE/app.cjs" OTEL_CONFIG_FILE="$HERE/config.yaml" SMOKE_FILE_PORT=24318 \
   KM_SERVICE_ID=ignored-by-block SMOKE_TARGET=http://127.0.0.1:24318/health
+
+echo ">>> 4b. a config file whose \${OTEL_SERVICE_NAME} the app supplies"
+run_app file-app "$REQ" "$HERE/app.cjs" OTEL_CONFIG_FILE="$HERE/config.yaml" SMOKE_FILE_PORT=24318 \
+  OTEL_SERVICE_NAME=smoke-file-app SMOKE_TARGET=http://127.0.0.1:24318/health
+
+echo ">>> 4c. the agent's socket (OTLP/gRPC)"
+run_app socket "$REQ" "$HERE/app.cjs" KM_SERVICE_ID=systemd:smoke-socket.service OTEL_SERVICE_NAME=smoke-socket \
+  KM_OTLP_SOCKET="$SOCK"
+
+echo ">>> 4d. a socket path with no socket behind it: TCP"
+run_app nosocket "$REQ" "$HERE/app.cjs" KM_SERVICE_ID=systemd:smoke-nosocket.service OTEL_SERVICE_NAME=smoke-nosocket \
+  KM_OTLP_SOCKET="$WORK/missing.sock"
+
+echo ">>> 4e. a config file whose otlp_grpc exporters have no endpoint: the socket"
+run_app file-socket "$REQ" "$HERE/app.cjs" OTEL_CONFIG_FILE="$HERE/config-socket.yaml" SMOKE_SOCKET="$SOCK"
+
+echo ">>> 4f. OpAMP: health and status reported, a remote sampling_rate of 0 applied live"
+run_app opamp "$REQ" "$HERE/app.cjs" KM_SERVICE_ID=systemd:smoke-opamp.service OTEL_SERVICE_NAME=smoke-opamp \
+  KM_OPAMP_ENDPOINT=http://127.0.0.1:4320/v1/opamp KM_OPAMP_POLL_INTERVAL=1 SMOKE_DELAY_MS=2000
 
 echo ">>> 5. SIGTERM still terminates an app without its own handler"
 mkdir -p "$WORK/status-sigterm"

@@ -13,7 +13,7 @@ from opentelemetry.sdk._configuration import _OTelSDKConfigurator
 from . import DISTRO_NAME, __version__
 from . import distro as _distro
 from ._settings import Settings
-from ._status import Status, file_hash
+from ._status import Status, app_substitutions, file_hash, file_text, remember
 
 _logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def _resource_attr_from_env(key: str) -> str | None:
 def read_block(path: str) -> Mapping[str, Any] | None:
     """``distribution.kloudmate`` from the config file (env-substituted, validated), or None."""
     try:
-        from opentelemetry.sdk._configuration.file._loader import load_config_file
+        from opentelemetry.configuration import load_config_file
 
         dist = load_config_file(path).distribution or {}
         return dist.get("kloudmate")
@@ -42,7 +42,10 @@ def read_block(path: str) -> Mapping[str, Any] | None:
 def _env_status(settings: Settings) -> Status:
     st = Status()
     for k, v in _distro.DEFAULTS.items():
-        st.put(k, os.environ.get(k, v), "app_env" if k in _distro.APP_SET else "distro_default")
+        app = k in _distro.APP_SET
+        st.put(k, os.environ.get(k, v), "app_env" if app else "distro_default")
+        if app:
+            st.overridden(k)
     for k in ("OTEL_SERVICE_NAME", "OTEL_TRACES_SAMPLER", "OTEL_TRACES_SAMPLER_ARG"):
         if os.environ.get(k):
             st.put(k, os.environ[k], "app_env")
@@ -60,9 +63,43 @@ def stamp_attributes(service_id: str | None) -> dict[str, str]:
     return attrs
 
 
-def complete_model(config: Any, settings: Settings, st: Status) -> None:
-    """Fills what the file leaves unset; never replaces a value the file sets."""
-    from opentelemetry.sdk._configuration import models as m
+def _exporters(config: Any):
+    """(signal, exporter model) for every exporter in the file."""
+    for p in (config.tracer_provider.processors if config.tracer_provider else None) or []:
+        for proc in (p.batch, p.simple):
+            if proc and proc.exporter:
+                yield "TRACES", proc.exporter
+    for r in (config.meter_provider.readers if config.meter_provider else None) or []:
+        if r.periodic and r.periodic.exporter:
+            yield "METRICS", r.periodic.exporter
+    for p in (config.logger_provider.processors if config.logger_provider else None) or []:
+        for proc in (p.batch, p.simple):
+            if proc and proc.exporter:
+                yield "LOGS", proc.exporter
+
+
+def fill_grpc_socket(config: Any, target: str) -> list[str]:
+    """Points every otlp_grpc exporter without an endpoint at the agent's socket (target is ``unix:///path``),
+    without TLS unless the file configures it. Returns the signals it filled."""
+    from opentelemetry.configuration import models as m
+
+    filled: list[str] = []
+    for sig, exp in _exporters(config):
+        g = getattr(exp, "otlp_grpc", None)
+        if g is None or g.endpoint:
+            continue
+        g.endpoint = target
+        if g.tls is None:
+            g.tls = m.GrpcTls(insecure=True)
+        if sig not in filled:
+            filled.append(sig)
+    return filled
+
+
+def complete_model(config: Any, settings: Settings, st: Status, sock: str | None = None) -> list[str]:
+    """Fills what the file leaves unset; never replaces a value the file sets. ``sock`` is the agent's socket
+    target, for otlp_grpc exporters without an endpoint. Returns the signals pointed at the socket."""
+    from opentelemetry.configuration import models as m
 
     if config.resource is None:
         config.resource = m.Resource()
@@ -93,9 +130,30 @@ def complete_model(config: Any, settings: Settings, st: Status) -> None:
             if exp is not None and not exp.endpoint:
                 exp.endpoint, filled = base + "/v1/logs", filled + 1
     st.put("OTEL_EXPORTER_OTLP_ENDPOINT", base, "distro_default" if filled else "file")
+    socket_signals = fill_grpc_socket(config, sock) if sock else []
+    for sig in socket_signals:
+        st.put(f"OTEL_EXPORTER_OTLP_{sig}_ENDPOINT", sock, "distro_default")
     st.put("runtime_metrics.profile", settings.runtime_metrics_profile, "file")
     if config.disabled:
         st.fail("disabled", "sdk_disabled")
+    return socket_signals
+
+
+def _start_opamp(settings: Settings, st: Status) -> None:
+    """The OpAMP client, when an endpoint is configured; before instrumentations create their tracers."""
+    if not settings.opamp_endpoint:
+        return
+    try:
+        from opentelemetry import trace
+
+        from . import _opamp
+
+        provider = trace.get_tracer_provider()
+        resource = getattr(provider, "resource", None)
+        name = str((resource.attributes if resource is not None else {}).get("service.name") or "unknown_service")
+        _opamp.start(settings.opamp_endpoint, st, settings.status_dir, provider, name)
+    except Exception:
+        _logger.debug("OpAMP client not started", exc_info=True)
 
 
 class _ConfigFileError(Exception):
@@ -140,17 +198,23 @@ class KloudMateConfigurator(_OTelSDKConfigurator):
         st.service_id = _resource_attr_from_env(KM_SERVICE_ID) or settings.service_id
         st.check_foreign_agents()
         st.write(settings.status_dir)
+        remember(st, settings.status_dir)
         attrs = dict(kwargs.pop("resource_attributes", None) or {})
         attrs.update(stamp_attributes(settings.service_id))
         _initialize_components(resource_attributes=attrs, **kwargs)
+        _start_opamp(settings, st)
 
     def _configure_file(self, path: str) -> None:
-        from opentelemetry.sdk._configuration._sdk import configure_sdk
-        from opentelemetry.sdk._configuration.file._loader import load_config_file
+        from opentelemetry.configuration import configure_sdk
+        from opentelemetry.configuration import load_config_file
 
         st = Status()
         st.config_hash = file_hash(path)
         st.put("OTEL_CONFIG_FILE", path, "app_env")
+        distro_set = set(_distro.DEFAULTS) - _distro.APP_SET
+        for name in app_substitutions(file_text(path), os.environ, distro_set):
+            st.put(name, os.environ[name], "app_env")
+            st.overridden(name)
         try:
             config = load_config_file(path)
         except Exception as exc:
@@ -158,7 +222,13 @@ class KloudMateConfigurator(_OTelSDKConfigurator):
             st.write(Settings.from_block(None).status_dir)
             raise _ConfigFileError(str(exc)) from exc
         settings = Settings.from_block((config.distribution or {}).get("kloudmate"))
-        complete_model(config, settings, st)
+        # The environment as the app left it: the distro's defaults are in it now, so leave them out.
+        app_env = {k: v for k, v in os.environ.items() if k not in _distro.DEFAULTS or k in _distro.APP_SET}
+        for sig in complete_model(config, settings, st, settings.socket_target(app_env)):
+            # Upstream's builder ignores tls on otlp_grpc (0.66b2); the exporter reads this instead.
+            os.environ.setdefault(f"OTEL_EXPORTER_OTLP_{sig}_INSECURE", "true")
         st.check_foreign_agents()
         st.write(settings.status_dir)
+        remember(st, settings.status_dir)
         configure_sdk(config)
+        _start_opamp(settings, st)
