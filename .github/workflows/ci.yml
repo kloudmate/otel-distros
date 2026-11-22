@@ -27,7 +27,7 @@ jobs:
   test:
     name: test (${{ matrix.language }})
     # Self-hosted only. The runner needs Docker (the .NET SDK runs in a container), curl, git and python3; the
-    # setup-* steps install Java, Python, Node and Go per run.
+    # setup-* steps install Java, Python, Node and Go per run, and the Gradle wrapper fetches Gradle.
     runs-on: [self-hosted, linux, x64]
     timeout-minutes: 30
     strategy:
@@ -45,9 +45,6 @@ jobs:
       - if: matrix.language == 'java'
         uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
-      - if: matrix.language == 'java'
-        uses: gradle/actions/setup-gradle@v4
-        with: { gradle-version: '8.14.3' }
       # Every language: the manifest check needs pip, which the self-hosted runner doesn't have.
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
@@ -67,7 +64,7 @@ jobs:
       - name: Unit tests
         run: |
           case "$LANGUAGE" in
-            java)   (cd java && gradle --no-daemon test) ;;
+            java)   (cd java && ./gradlew --no-daemon test) ;;
             python) python -m pip install --quiet -e python pytest && python -m pytest -q python/tests ;;
             nodejs) (cd nodejs && npm ci --no-audit --no-fund && npm test) ;;
             dotnet) dotnet/dotnet.sh build -c Release -o build/out ;;

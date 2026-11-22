@@ -136,7 +136,7 @@ logs one `[kloudmate-java]` line on stderr, and the agent continues with upstrea
 ## Development
 
 ```sh
-gradle jar agentJar test   # extension jar, kloudmate-javaagent.jar (Java 8 bytecode) and unit tests
+./gradlew jar agentJar test   # extension jar, kloudmate-javaagent.jar (Java 8 bytecode) and unit tests
 smoke/run.sh               # end-to-end against a local OTLP sink (JDK, Gradle, Go)
 release.sh                 # reproducible jars, km-manifest.json, SHA256SUMS
 ```
